@@ -1,0 +1,29 @@
+{
+  "hooks": [
+    {
+      "name": "pre-calculate-validate",
+      "event": "pre_calculate",
+      "description": "입력 파라메터 유효성 및 경간 한계 사전 검증",
+      "action": ".claude/hooks/pre-calculate-validate.md"
+    },
+    {
+      "name": "post-calculate-audit",
+      "event": "post_calculate",
+      "description": "적산 산출 후 기타공사비(10%) 및 제잡비(40.0~43.9%) 정합성 감사",
+      "action": ".claude/hooks/post-calculate-audit.md"
+    },
+    {
+      "name": "on-parameter-change",
+      "event": "input_change",
+      "description": "단일 입력값(Red) 변경 시 파생 상태(Blue) 및 3D 뷰어 동기화",
+      "action": ".claude/hooks/on-parameter-change.md"
+    },
+    {
+      "name": "session-close-sync",
+      "event": "session_close",
+      "description": "세션 종료 시 PROGRESS.md 및 PLAN.md 자동 갱신",
+      "action": ".claude/hooks/session-close-sync.md"
+    }
+  ]
+}
+

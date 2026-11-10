@@ -1,0 +1,24 @@
+{
+  "model_tier_strategy": {
+    "tier_1_high_intelligence": {
+      "models": ["claude-3-5-sonnet", "gemini-1.5-pro", "gpt-4o"],
+      "target_agents": ["bridge-cost-engine", "quality-verifier", "lead-coordinator"],
+      "responsibilities": "복합 수치 적산, 선형보간 공식 무결성, 벤치마크 100% 정합성 QA 감사",
+      "rationale": "도메인 계산 정확도 100% 보장 및 환각(Hallucination) 방지 필수"
+    },
+    "tier_2_lightweight_fast": {
+      "models": ["claude-3-5-haiku", "gemini-1.5-flash", "gpt-4o-mini"],
+      "target_agents": ["bim-parametric-modeler", "alternative-analyst", "report-generator"],
+      "responsibilities": "Three.js 3D 메시 지오메트리 빌드, Recharts 차트 데이터셋 변환, SheetJS(xlsx) 포맷팅",
+      "rationale": "정형화된 데이터 변환 및 지오메트리 생성으로 소형 모델로도 충분하며 비용 약 80% 절감"
+    },
+    "tier_3_ultra_fast_micro": {
+      "models": ["gemini-1.5-flash-8b", "claude-3-5-haiku"],
+      "target_agents": ["pre-calculate-validate", "post-calculate-audit", "on-parameter-change", "session-close-sync"],
+      "responsibilities": "파라미터 바운더리 체크, 단순 수식 검산, PROGRESS/PLAN 동기화 훅",
+      "rationale": "단순 조건문 판정 및 텍스트 갱신 작업으로 최소 토큰 소모"
+    }
+  },
+  "estimated_cost_reduction": "75% ~ 80%",
+  "confirmed_date": "2026-11-10"
+}
