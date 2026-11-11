@@ -15,8 +15,9 @@ import { PRESET_BENCHMARKS } from '../domain/constants/rev04_database';
 
 interface BridgeStoreState {
   // 1. [Red] 원천 사용자 입력 상태 (SSOT)
+  projectName: string;
   bridgeParams: BridgeParameters;
-  activeAlternativeId: string;
+  activeAlternativeId: string | null;
   alternatives: AlternativeScenario[];
   
   // 2. [Blue] 연산 및 인용 파생 상태 (Read-Only)
@@ -28,6 +29,7 @@ interface BridgeStoreState {
   activeTab: 'basic' | 'spans' | 'substructure' | 'piles';
 
   // 4. 액션 (Red 인풋 갱신 및 파생 상태 동기화)
+  setProjectName: (name: string) => void;
   updateBridgeParams: (partial: Partial<BridgeParameters>) => void;
   updateSpan: (index: number, span: Partial<SpanItem>) => void;
   addSpan: (type?: SuperstructureType, length?: number) => void;
@@ -38,7 +40,9 @@ interface BridgeStoreState {
   updateAbutment: (index: number, abut: Partial<AbutmentItem>) => void;
   setPileMethod: (method: PileMethod) => void;
 
-  // 대안 관리 액션
+  // 대안 관리 액션 (원안 및 비교안 등록/추가)
+  registerCurrentAsAlternative: (name?: string) => void;
+  updateCurrentAlternative: () => void;
   saveCurrentAsAlternative: (name: string, color?: string) => void;
   loadAlternative: (id: string) => void;
   deleteAlternative: (id: string) => void;
@@ -53,8 +57,8 @@ interface BridgeStoreState {
 }
 
 export const DEFAULT_CLEAN_BRIDGE: BridgeParameters = {
-  id: 'alt_base',
-  name: '신규 교량 계획 프로젝트 (원안)',
+  id: '',
+  name: '',
   bridge_length: 120,
   bridge_width: 24,
   skew_angle: 0,
@@ -76,25 +80,21 @@ export const DEFAULT_CLEAN_BRIDGE: BridgeParameters = {
   steel_price_ton: 715000,
   apply_mss_adjustment: false,
   apply_fsm_adjustment: false,
-  description: '신규 교량 기본 계획안 (40m × 3경간 PSC BEAM, B=24m 왕복 4차로 표준)'
+  description: '신규 교량 기본 설계 (40m × 3경간 PSC BEAM, B=24m 왕복 4차로 표준)'
 };
 
+/**
+ * 원안을 포함한 전면 초기화 상태 생성 (원안도 초기화 대상)
+ */
 export function createDefaultCleanState() {
   const baseParams: BridgeParameters = JSON.parse(JSON.stringify(DEFAULT_CLEAN_BRIDGE));
   const baseBreakdown = calculateBridgeCost(baseParams);
-  const baseAlt: AlternativeScenario = {
-    id: 'alt_base',
-    name: '원안 (기본 계획안)',
-    bridgeParams: baseParams,
-    costBreakdown: baseBreakdown,
-    color: '#3B82F6',
-    isBase: true
-  };
 
   return {
+    projectName: '',
     bridgeParams: baseParams,
-    activeAlternativeId: 'alt_base',
-    alternatives: [baseAlt],
+    activeAlternativeId: null as string | null,
+    alternatives: [] as AlternativeScenario[], // 원안도 등록되지 않은 완전 클린 상태!
     costBreakdown: baseBreakdown,
     selectedViewMode: '3D' as const,
     cameraPreset: 'iso' as const,
@@ -247,25 +247,76 @@ export const useBridgeStore = create<BridgeStoreState>((set, get) => ({
     });
   },
 
-  saveCurrentAsAlternative: (name, color = '#6366F1') => {
+  setProjectName: (name) => {
     set((state) => {
+      const updatedParams = { ...state.bridgeParams, name };
+      return {
+        projectName: name,
+        bridgeParams: updatedParams
+      };
+    });
+  },
+
+  registerCurrentAsAlternative: (customName) => {
+    set((state) => {
+      const isBase = state.alternatives.length === 0;
+      const defaultName = isBase
+        ? '원안 (기본 계획안)'
+        : `비교 ${state.alternatives.length}안`;
+      const name = (customName && customName.trim()) || state.bridgeParams.name || defaultName;
+
       const newId = `alt_${Date.now()}`;
-      const paramsCopy = JSON.parse(JSON.stringify(state.bridgeParams));
+      const paramsCopy: BridgeParameters = JSON.parse(JSON.stringify(state.bridgeParams));
       paramsCopy.id = newId;
       paramsCopy.name = name;
       const breakdown = calculateBridgeCost(paramsCopy);
+
+      const colorPalette = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4'];
+      const color = isBase ? '#3B82F6' : colorPalette[state.alternatives.length % colorPalette.length];
+
       const newAlt: AlternativeScenario = {
         id: newId,
         name,
         bridgeParams: paramsCopy,
         costBreakdown: breakdown,
-        color
+        color,
+        isBase
       };
+
       return {
         alternatives: [...state.alternatives, newAlt],
-        activeAlternativeId: newId
+        activeAlternativeId: newId,
+        bridgeParams: paramsCopy,
+        costBreakdown: breakdown
       };
     });
+  },
+
+  updateCurrentAlternative: () => {
+    set((state) => {
+      if (!state.activeAlternativeId) return state;
+      const currentIdx = state.alternatives.findIndex((a) => a.id === state.activeAlternativeId);
+      if (currentIdx === -1) return state;
+
+      const paramsCopy = JSON.parse(JSON.stringify(state.bridgeParams));
+      const breakdown = calculateBridgeCost(paramsCopy);
+
+      const updatedAlts = [...state.alternatives];
+      updatedAlts[currentIdx] = {
+        ...updatedAlts[currentIdx],
+        bridgeParams: paramsCopy,
+        costBreakdown: breakdown
+      };
+
+      return {
+        alternatives: updatedAlts,
+        costBreakdown: breakdown
+      };
+    });
+  },
+
+  saveCurrentAsAlternative: (name, color = '#6366F1') => {
+    get().registerCurrentAsAlternative(name);
   },
 
   loadAlternative: (id) => {
@@ -282,8 +333,13 @@ export const useBridgeStore = create<BridgeStoreState>((set, get) => ({
 
   deleteAlternative: (id) => {
     set((state) => {
-      if (state.alternatives.length <= 1) return state;
       const filtered = state.alternatives.filter((a) => a.id !== id);
+      if (filtered.length === 0) {
+        return {
+          alternatives: [],
+          activeAlternativeId: null
+        };
+      }
       const nextActive = filtered[0].id;
       return {
         alternatives: filtered,

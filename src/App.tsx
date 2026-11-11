@@ -6,6 +6,7 @@ import { ParametricInputPanel } from './components/input/ParametricInputPanel';
 import { CostReportTable } from './components/report/CostReportTable';
 import { AlternativeComparison } from './components/analytics/AlternativeComparison';
 import { BenchmarkSelector } from './components/benchmarks/BenchmarkSelector';
+import { AlternativeStatusBar } from './components/analytics/AlternativeStatusBar';
 import { SSOTDerivedValue } from './components/common/SSOTFields';
 import {
   Box,
@@ -68,15 +69,19 @@ export const App: React.FC = () => {
               <GitBranch className="w-4 h-4 text-slate-500" />
               <span className="font-semibold text-slate-600">활성 대안:</span>
               <select
-                value={activeAlternativeId}
-                onChange={(e) => loadAlternative(e.target.value)}
+                value={activeAlternativeId || ''}
+                onChange={(e) => e.target.value && loadAlternative(e.target.value)}
                 className="bg-transparent font-bold text-indigo-700 focus:outline-none cursor-pointer max-w-[180px] truncate"
               >
-                {alternatives.map((alt) => (
-                  <option key={alt.id} value={alt.id}>
-                    {alt.name}
-                  </option>
-                ))}
+                {alternatives.length === 0 ? (
+                  <option value="">대안 미등록 (원안 필요)</option>
+                ) : (
+                  alternatives.map((alt) => (
+                    <option key={alt.id} value={alt.id}>
+                      {alt.name}
+                    </option>
+                  ))
+                )}
               </select>
             </div>
 
@@ -165,46 +170,51 @@ export const App: React.FC = () => {
       {/* 3. Main Workspace Area */}
       <main className="max-w-7xl mx-auto px-4 py-5 flex-1 w-full">
         {selectedViewMode === '3D' && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-            {/* Left 7 Columns: 3D BIM Viewer & Viewport Controls */}
-            <div className="lg:col-span-7 flex flex-col gap-4">
-              <Bridge3DViewer />
+          <div className="space-y-4">
+            {/* 3D BIM 모델러 대안 추가 현황 및 원안 결정 바 */}
+            <AlternativeStatusBar />
 
-              {/* Sub-breakdown Cards */}
-              <div className="grid grid-cols-3 gap-3">
-                <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs">
-                  <span className="text-[11px] font-bold text-slate-500 block">상부공 직접비</span>
-                  <span className="text-sm font-extrabold text-blue-700">
-                    {(costBreakdown.superstructure_cost / 100000000).toFixed(2)} 억원
-                  </span>
-                  <span className="text-[10px] text-slate-400 block mt-0.5">
-                    {Math.round((costBreakdown.superstructure_cost / (costBreakdown.direct_cost_total || 1)) * 100)}% 비중
-                  </span>
-                </div>
-                <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs">
-                  <span className="text-[11px] font-bold text-slate-500 block">하부공(교대+교각)</span>
-                  <span className="text-sm font-extrabold text-blue-700">
-                    {(costBreakdown.substructure_total / 100000000).toFixed(2)} 억원
-                  </span>
-                  <span className="text-[10px] text-slate-400 block mt-0.5">
-                    {Math.round((costBreakdown.substructure_total / (costBreakdown.direct_cost_total || 1)) * 100)}% 비중
-                  </span>
-                </div>
-                <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs">
-                  <span className="text-[11px] font-bold text-slate-500 block">기초공 (강관말뚝)</span>
-                  <span className="text-sm font-extrabold text-blue-700">
-                    {(costBreakdown.foundation_cost / 100000000).toFixed(2)} 억원
-                  </span>
-                  <span className="text-[10px] text-slate-400 block mt-0.5">
-                    총연장 {costBreakdown.total_pile_length.toLocaleString()}m
-                  </span>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+              {/* Left 7 Columns: 3D BIM Viewer & Viewport Controls */}
+              <div className="lg:col-span-7 flex flex-col gap-4">
+                <Bridge3DViewer />
+
+                {/* Sub-breakdown Cards */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs">
+                    <span className="text-[11px] font-bold text-slate-500 block">상부공 직접비</span>
+                    <span className="text-sm font-extrabold text-blue-700">
+                      {(costBreakdown.superstructure_cost / 100000000).toFixed(2)} 억원
+                    </span>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">
+                      {Math.round((costBreakdown.superstructure_cost / (costBreakdown.direct_cost_total || 1)) * 100)}% 비중
+                    </span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs">
+                    <span className="text-[11px] font-bold text-slate-500 block">하부공(교대+교각)</span>
+                    <span className="text-sm font-extrabold text-blue-700">
+                      {(costBreakdown.substructure_total / 100000000).toFixed(2)} 억원
+                    </span>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">
+                      {Math.round((costBreakdown.substructure_total / (costBreakdown.direct_cost_total || 1)) * 100)}% 비중
+                    </span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs">
+                    <span className="text-[11px] font-bold text-slate-500 block">기초공 (강관말뚝)</span>
+                    <span className="text-sm font-extrabold text-blue-700">
+                      {(costBreakdown.foundation_cost / 100000000).toFixed(2)} 억원
+                    </span>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">
+                      총연장 {costBreakdown.total_pile_length.toLocaleString()}m
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Right 5 Columns: SSOT Parametric Input Panel */}
-            <div className="lg:col-span-5 h-[620px]">
-              <ParametricInputPanel />
+              {/* Right 5 Columns: SSOT Parametric Input Panel */}
+              <div className="lg:col-span-5 h-[620px]">
+                <ParametricInputPanel />
+              </div>
             </div>
           </div>
         )}
