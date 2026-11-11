@@ -19,7 +19,7 @@
 | **Step 7** | 하네스 기반 CLAUDE.md 보강 | ✅ 완료 | • 하네스 3대 원칙(상태 분리, 모듈 격리, 오류 복원력) `CLAUDE.md` 통합<br>• 5대 전문 에이전트 및 6대 커맨드 협업 프로토콜 및 데이터 핸드오프 규약 완비 |
 | **Step 8** | 다이나믹 워크플로우 구현/병렬화 | ✅ 완료 | • `parallel_workflow_engine.mjs` 동시성 병렬 실행 엔진 구현 완료<br>• 상부/하부/기초/부대/BIM 지오메트리 5개 독립 작업 Dynamic Agent 병렬 처리<br>• 원자적 파일 락킹(`CheckpointLockManager`) 및 불변 집계 검증 완료 |
 | **Step 9** | 토큰 최적화 모델 추천 및 확정 | ✅ 완료 | • 3개 티어(고지능 Tier 1 / 경량 고속 Tier 2 / 초경량 Tier 3) 모델 매핑 확정<br>• `.claude/model-optimization.json` 설정 저장 완료 (토큰 비용 약 75% 절감) |
-| **Step 10** | GitHub 공개 저장소 생성 및 배포 | ✅ 완료 | • `.gitignore` 생성 및 환경변수/비밀키 누출 차단 완료<br>• 로컬 Git 초기화 및 커밋 완료<br>• GitHub 공개 저장소 생성 및 원격 푸시 완료 (`https://github.com/ITKim77/Conceptual_CostEstimate`) |
+| **Step 10** | GitHub 공개 저장소 생성 및 배포 | ✅ 완료 | • `.gitignore` 생성 및 환경변수/비밀키 누출 차단 완료<br>• 로컬 Git 초기화 및 커밋 완료<br>• GitHub 공개 저장소 생성 및 원격 푸시 완료 (`https://github.com/ITKim77/Conceptual_CostEstimate`)<br>• **GitHub Pages 호스팅 배포 완료**: [`https://itkim77.github.io/Conceptual_CostEstimate/`](https://itkim77.github.io/Conceptual_CostEstimate/) (HTTP 200 OK 라이브 검증) |
 | **구현 단계** | 웹 애플리케이션 풀스택 구현 | ✅ 완료 | • **3D BIM 파라메트릭 뷰어** (Three.js WebGL, InstancedMesh 강관말뚝, 4개 카메라 시점)<br>• **SSOT 파라메트릭 입력 패널** (Red 단일입력, Blue 파생연산, Black 고정상수)<br>• **대안별 경제성 비교 분석** (Recharts 총공사비 및 공종별 스택 바 차트, 비교 매트릭스)<br>• **토목 표준 적산 산출서** (SheetJS `.xlsx` 엑셀 내보내기 및 인쇄 최적화)<br>• **실적 벤치마크 원클릭 로더** (연축교 원안 및 비교안, 안동JCT교 100% 정합성 검증) |
 
 ---
