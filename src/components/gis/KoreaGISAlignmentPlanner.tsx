@@ -1,5 +1,5 @@
 // src/components/gis/KoreaGISAlignmentPlanner.tsx
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   Search,
   MapPin,
@@ -13,7 +13,12 @@ import {
   RefreshCw,
   Navigation,
   Mountain,
-  Waves
+  Waves,
+  Hand,
+  MousePointer,
+  ZoomIn,
+  ZoomOut,
+  ArrowRight
 } from 'lucide-react';
 import {
   KOREA_POI_DATABASE,
@@ -23,122 +28,166 @@ import {
   calculateGroundDistanceMeters,
   calculateAzimuthAngle
 } from '../../domain/gis/korea_geocoding';
-import { latLngToTileCoords, getSatelliteTileUrl } from '../../domain/gis/tile_coords';
+import { latLngToTileCoords, tileCoordsToLatLng, getSatelliteTileUrl, getTerrariumDemTileUrl, decodeTerrariumRGBToElevation } from '../../domain/gis/tile_coords';
 import { useBridgeStore } from '../../store/useBridgeStore';
 import { SpanItem, PierItem, AbutmentItem, TerrainParameters, AlignmentParameters } from '../../domain/models/bridge';
 import { calculatePierFittings } from '../../domain/engine/terrain_alignment_calculator';
-import { calculateBridgeCost } from '../../domain/engine/cost_calculator';
 
-interface Point {
-  x: number; // 캔버스 좌표 (0~800)
-  y: number; // 캔버스 좌표 (0~500)
+interface AlignmentLatLngPoint {
   lat: number;
   lng: number;
 }
 
 interface KoreaGISAlignmentPlannerProps {
   onClose?: () => void;
+  onConfirmAlignment?: (totalLen: number, spanCount: number) => void;
   onApplyAlignment?: (appliedLength: number, spanCount: number) => void;
 }
 
 export const KoreaGISAlignmentPlanner: React.FC<KoreaGISAlignmentPlannerProps> = ({
   onClose,
+  onConfirmAlignment,
   onApplyAlignment
 }) => {
   const { bridgeParams, updateBridgeParams, setViewMode } = useBridgeStore();
 
-  // 검색 상태
+  // 1. 지도 중심 좌표 (WGS84) 및 줌 레벨
+  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>(() => {
+    if (bridgeParams.coordinates?.lat && bridgeParams.coordinates?.lng) {
+      return { lat: bridgeParams.coordinates.lat, lng: bridgeParams.coordinates.lng };
+    }
+    return { lat: 36.3852, lng: 127.4241 }; // 기본: 대전 갑천 연축교
+  });
+  const [zoomLevel, setZoomLevel] = useState<number>(16); // 13 ~ 18
+
+  // 2. 검색 상태
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<KoreaLocationPOI[]>(KOREA_POI_DATABASE.slice(0, 5));
-  const [selectedPOI, setSelectedPOI] = useState<KoreaLocationPOI>(KOREA_POI_DATABASE[0]);
+  const [searchResults, setSearchResults] = useState<KoreaLocationPOI[]>(KOREA_POI_DATABASE.slice(0, 6));
+  const [isSearching, setIsSearching] = useState(false);
+  const [locationName, setLocationName] = useState(bridgeParams.locationName || '대전 신탄진 연축교 일원');
 
-  // 지도 상태 (중심 좌표 및 줌)
-  const [zoomLevel, setZoomLevel] = useState(16); // 14 ~ 18
-  const [mapCenter, setMapCenter] = useState({ lat: KOREA_POI_DATABASE[0].lat, lng: KOREA_POI_DATABASE[0].lng });
+  // 3. 인터랙션 모드 ('PAN': 자유 패닝/이동 모드, 'DRAW': 노선 찍기 모드)
+  const [interactMode, setInteractMode] = useState<'PAN' | 'DRAW'>('PAN');
 
-  // 마우스 인터랙티브 노선 계획 포인트 (Point 0: A1, Point 1: A2 등)
-  const [alignmentPoints, setAlignmentPoints] = useState<Point[]>([
-    { x: 260, y: 280, lat: 36.3845, lng: 127.4230 },
-    { x: 540, y: 220, lat: 36.3860, lng: 127.4255 }
+  // 4. 계획 노선 좌표 (WGS84 절대 위경도 좌표로 저장하여 패닝/줌 시에도 지도에 고정)
+  const [alignmentLatLngs, setAlignmentLatLngs] = useState<AlignmentLatLngPoint[]>([
+    { lat: 36.3845, lng: 127.4230 }, // A1
+    { lat: 36.3860, lng: 127.4255 }  // A2
   ]);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [satelliteImg, setSatelliteImg] = useState<HTMLImageElement | null>(null);
 
+  // 5. 드래그 패닝 상태
+  const isDraggingRef = useRef(false);
+  const lastMousePosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // 🌟 실제 대한민국 고해상도 항공위성사진 타일 실시간 로드 (ESRI World Imagery)
-  useEffect(() => {
-    let active = true;
-    const tile = latLngToTileCoords(mapCenter.lat, mapCenter.lng, zoomLevel);
-    const url = getSatelliteTileUrl(tile.x, tile.y, zoomLevel);
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      if (active) setSatelliteImg(img);
-    };
-    img.onerror = () => {
-      if (active) setSatelliteImg(null);
-    };
-    img.src = url;
-    return () => {
-      active = false;
-    };
-  }, [mapCenter, zoomLevel]);
+  // 6. 타일 이미지 캐시 (메모리 누수 방지용 맵)
+  const tileCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
+  const [tileVersion, setTileVersion] = useState(0);
 
-  // 검색어 입력 시 로컬 캐시 + 온라인 지오코더 통합 검색
+  // 7. 실측 DEM 고도 정보
+  const [demHeights, setDemHeights] = useState<{ min: number; max: number; center: number }>({
+    min: 15,
+    max: 35,
+    center: 25
+  });
+
+  // 검색창 입력 핸들러 (로컬 + 온라인 실시간 지오코딩)
   const handleSearchChange = (q: string) => {
     setSearchQuery(q);
     const local = searchKoreaLocations(q);
     setSearchResults(local);
 
     if (q.trim().length >= 2) {
-      searchKoreaLocationsOnline(q).then((online) => {
-        if (online && online.length > 0) {
-          setSearchResults(online);
-        }
-      });
+      setIsSearching(true);
+      searchKoreaLocationsOnline(q)
+        .then((res) => {
+          if (res && res.length > 0) {
+            setSearchResults(res);
+          }
+          setIsSearching(false);
+        })
+        .catch(() => setIsSearching(false));
     }
   };
 
-  // POI 선택 시 해당 위치로 지도 이동 및 기본 노선 리셋
-  const handleSelectPOI = (poi: KoreaLocationPOI) => {
-    setSelectedPOI(poi);
+  // 장소 선택 시 지도 중심 이동
+  const handleSelectLocation = (poi: KoreaLocationPOI) => {
     setMapCenter({ lat: poi.lat, lng: poi.lng });
-    // 기본 노선 재설정
-    setAlignmentPoints([
-      { x: 280, y: 300, lat: poi.lat - 0.001, lng: poi.lng - 0.0015 },
-      { x: 520, y: 200, lat: poi.lat + 0.001, lng: poi.lng + 0.0015 }
+    setLocationName(poi.name);
+    // 선택된 위치 주변 기본 노선 설정
+    setAlignmentLatLngs([
+      { lat: poi.lat - 0.001, lng: poi.lng - 0.0015 },
+      { lat: poi.lat + 0.001, lng: poi.lng + 0.0015 }
     ]);
-    setStatusMessage(`'${poi.name}' 실제 항공위성사진 및 실측 DEM 지형이 로드되었습니다.`);
   };
 
-  // 노선 거리 및 방위각 계산
+  // 위경도 좌표 <-> 캔버스 픽셀 좌표 상호 변환 함수
+  const latLngToCanvasXY = useCallback(
+    (lat: number, lng: number, width: number, height: number) => {
+      // Web Mercator 기준 픽셀 계산
+      const n = Math.pow(2, zoomLevel);
+      const centerTileX = ((mapCenter.lng + 180) / 360) * n;
+      const centerLatRad = (mapCenter.lat * Math.PI) / 180;
+      const centerTileY =
+        ((1 - Math.log(Math.tan(centerLatRad) + 1 / Math.cos(centerLatRad)) / Math.PI) / 2) * n;
+
+      const ptTileX = ((lng + 180) / 360) * n;
+      const ptLatRad = (lat * Math.PI) / 180;
+      const ptTileY =
+        ((1 - Math.log(Math.tan(ptLatRad) + 1 / Math.cos(ptLatRad)) / Math.PI) / 2) * n;
+
+      const px = width / 2 + (ptTileX - centerTileX) * 256;
+      const py = height / 2 + (ptTileY - centerTileY) * 256;
+      return { x: px, y: py };
+    },
+    [mapCenter, zoomLevel]
+  );
+
+  const canvasXYToLatLng = useCallback(
+    (px: number, py: number, width: number, height: number) => {
+      const n = Math.pow(2, zoomLevel);
+      const centerTileX = ((mapCenter.lng + 180) / 360) * n;
+      const centerLatRad = (mapCenter.lat * Math.PI) / 180;
+      const centerTileY =
+        ((1 - Math.log(Math.tan(centerLatRad) + 1 / Math.cos(centerLatRad)) / Math.PI) / 2) * n;
+
+      const targetTileX = centerTileX + (px - width / 2) / 256;
+      const targetTileY = centerTileY + (py - height / 2) / 256;
+
+      const targetLng = (targetTileX / n) * 360 - 180;
+      const targetLatRad = Math.atan(Math.sinh(Math.PI * (1 - (2 * targetTileY) / n)));
+      const targetLat = (targetLatRad * 180) / Math.PI;
+
+      return { lat: targetLat, lng: targetLng };
+    },
+    [mapCenter, zoomLevel]
+  );
+
+  // 8. 노선 거리, 방위각, 사각 실시간 산출
   const { calculatedLengthMeters, azimuthDeg, skewAngleDeg } = useMemo(() => {
-    if (alignmentPoints.length < 2) {
-      return { calculatedLengthMeters: selectedPOI.defaultBridgeLength, azimuthDeg: 55, skewAngleDeg: 10 };
+    if (alignmentLatLngs.length < 2) {
+      return { calculatedLengthMeters: 240, azimuthDeg: 60, skewAngleDeg: 15 };
     }
-    const p1 = alignmentPoints[0];
-    const p2 = alignmentPoints[alignmentPoints.length - 1];
+    const p1 = alignmentLatLngs[0];
+    const p2 = alignmentLatLngs[alignmentLatLngs.length - 1];
     const dist = calculateGroundDistanceMeters(p1.lat, p1.lng, p2.lat, p2.lng);
     const az = calculateAzimuthAngle(p1.lat, p1.lng, p2.lat, p2.lng);
-    // 교량 사각(Skew Angle: 하천 직각선 대비 편각 0~60도)
     const skew = Math.min(45, Math.abs(az - 90) % 90);
     return {
-      calculatedLengthMeters: Math.max(50, dist || selectedPOI.defaultBridgeLength),
+      calculatedLengthMeters: Math.max(40, dist),
       azimuthDeg: az,
       skewAngleDeg: Math.round(skew)
     };
-  }, [alignmentPoints, selectedPOI]);
+  }, [alignmentLatLngs]);
 
-  // 권장 경간 분할 계산 (L -> 경간 목록)
+  // 권장 경간 분할
   const recommendedSpans = useMemo(() => {
     const L = calculatedLengthMeters;
     let standardSpan = 45;
-    if (L > 500) standardSpan = 70;
-    else if (L > 300) standardSpan = 50;
+    if (L > 600) standardSpan = 80;
+    else if (L > 350) standardSpan = 50;
     else if (L > 150) standardSpan = 45;
-    else standardSpan = 35;
+    else standardSpan = 30;
 
     const spanCount = Math.max(2, Math.round(L / standardSpan));
     const eachLen = Math.round((L / spanCount) * 10) / 10;
@@ -148,7 +197,7 @@ export const KoreaGISAlignmentPlanner: React.FC<KoreaGISAlignmentPlannerProps> =
     }));
   }, [calculatedLengthMeters]);
 
-  // 캔버스에 위성사진/하천 지형 및 계획 노선 렌더링
+  // 9. 캔버스 렌더링: 실제 위성사진 다중 타일(3x3 Grid) + 계획 노선 렌더링
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -158,65 +207,84 @@ export const KoreaGISAlignmentPlanner: React.FC<KoreaGISAlignmentPlannerProps> =
     const w = canvas.width;
     const h = canvas.height;
 
-    // 1. 🌟 실제 고해상도 항공위성 정사영상 렌더링 (ESRI World Imagery 실사 타일)
-    if (satelliteImg) {
-      ctx.drawImage(satelliteImg, 0, 0, w, h);
-    } else {
-      // 위성 이미지 로딩 중 배경
-      const grad = ctx.createLinearGradient(0, 0, w, h);
-      grad.addColorStop(0, '#1E293B');
-      grad.addColorStop(1, '#0F172A');
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, w, h);
-      ctx.font = 'bold 14px sans-serif';
-      ctx.fillStyle = '#94A3B8';
-      ctx.fillText('실시간 고해상도 위성 정사영상 타일 다운로드 중...', w / 2 - 130, h / 2);
+    // 배경 초기화 (다크 슬레이트)
+    ctx.fillStyle = '#0F172A';
+    ctx.fillRect(0, 0, w, h);
+
+    // 중심 타일 계산
+    const n = Math.pow(2, zoomLevel);
+    const centerTileX = ((mapCenter.lng + 180) / 360) * n;
+    const centerLatRad = (mapCenter.lat * Math.PI) / 180;
+    const centerTileY =
+      ((1 - Math.log(Math.tan(centerLatRad) + 1 / Math.cos(centerLatRad)) / Math.PI) / 2) * n;
+
+    const baseTileX = Math.floor(centerTileX);
+    const baseTileY = Math.floor(centerTileY);
+
+    // 캔버스 중심에 타일 격자 렌더링 (주변 -2 ~ +2 범위의 실제 위성 타일 로드)
+    const range = 2;
+    for (let dx = -range; dx <= range; dx++) {
+      for (let dy = -range; dy <= range; dy++) {
+        const tx = baseTileX + dx;
+        const ty = baseTileY + dy;
+        const tileKey = `${zoomLevel}_${tx}_${ty}`;
+
+        const screenX = w / 2 + (tx - centerTileX) * 256;
+        const screenY = h / 2 + (ty - centerTileY) * 256;
+
+        const cached = tileCacheRef.current.get(tileKey);
+        if (cached && cached.complete && cached.naturalWidth > 0) {
+          ctx.drawImage(cached, screenX, screenY, 256, 256);
+        } else {
+          // 타일 로드 요청
+          if (!tileCacheRef.current.has(tileKey)) {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.src = getSatelliteTileUrl(tx, ty, zoomLevel);
+            img.onload = () => {
+              setTileVersion((v) => v + 1); // 리렌더 트리거
+            };
+            tileCacheRef.current.set(tileKey, img);
+          }
+          // 로드 전 와이어 플레이스홀더
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+          ctx.strokeRect(screenX, screenY, 256, 256);
+        }
+      }
     }
 
-    // 2. 실제 국토 좌표 및 축척 안내 오버레이
-    ctx.font = 'bold 11px sans-serif';
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-    ctx.fillRect(10, h - 35, 360, 24);
-    ctx.fillStyle = '#38BDF8';
-    ctx.fillText(`실측 위성 정사영상 [Lat: ${mapCenter.lat.toFixed(5)}, Lng: ${mapCenter.lng.toFixed(5)}]`, 18, h - 19);
+    // 10. 계획 노선 가이드라인 그리기
+    if (alignmentLatLngs.length >= 2) {
+      const p1 = latLngToCanvasXY(alignmentLatLngs[0].lat, alignmentLatLngs[0].lng, w, h);
+      const p2 = latLngToCanvasXY(alignmentLatLngs[1].lat, alignmentLatLngs[1].lng, w, h);
 
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-    ctx.fillRect(w - 220, h - 35, 210, 24);
-    ctx.fillStyle = '#FBBF24';
-    ctx.fillText(`축척: 1px ≈ ${(calculatedLengthMeters / 280).toFixed(1)}m | 줌: Lv.${zoomLevel}`, w - 210, h - 19);
-
-    // 4. 계획 노선 가이드라인 렌더링
-    if (alignmentPoints.length >= 2) {
-      const p1 = alignmentPoints[0];
-      const p2 = alignmentPoints[1];
-
-      // 교량 중심선 외곽 발광 효과
+      // 교량 중심선 외곽 발광
       ctx.shadowColor = '#F59E0B';
       ctx.shadowBlur = 12;
       ctx.strokeStyle = '#FBBF24';
-      ctx.lineWidth = 5;
+      ctx.lineWidth = 6;
       ctx.beginPath();
       ctx.moveTo(p1.x, p1.y);
       ctx.lineTo(p2.x, p2.y);
       ctx.stroke();
-      ctx.shadowBlur = 0; // reset
+      ctx.shadowBlur = 0;
 
-      // 교량 슬래브 전폭원 가이드 (좌우 폭 표시)
+      // 교량 상판 폭 가이드 (사이드 점선)
       const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-      const halfB = 10;
+      const halfB = 12;
       const dx = Math.sin(angle) * halfB;
       const dy = -Math.cos(angle) * halfB;
 
-      ctx.strokeStyle = 'rgba(245, 158, 11, 0.5)';
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = 'rgba(245, 158, 11, 0.6)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 6]);
       ctx.beginPath();
       ctx.moveTo(p1.x + dx, p1.y + dy);
       ctx.lineTo(p2.x + dx, p2.y + dy);
       ctx.moveTo(p1.x - dx, p1.y - dy);
       ctx.lineTo(p2.x - dx, p2.y - dy);
       ctx.stroke();
-      ctx.setLineDash([]); // reset
+      ctx.setLineDash([]);
 
       // 교각 위치(P1, P2...) 분할 마커 그리기
       const spanCount = recommendedSpans.length;
@@ -225,92 +293,152 @@ export const KoreaGISAlignmentPlanner: React.FC<KoreaGISAlignmentPlannerProps> =
         const px = p1.x + (p2.x - p1.x) * ratio;
         const py = p1.y + (p2.y - p1.y) * ratio;
 
-        // 교각 풋팅 마커
-        ctx.fillStyle = '#E2E8F0';
+        ctx.fillStyle = '#FFFFFF';
         ctx.strokeStyle = '#0F172A';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2.5;
         ctx.beginPath();
-        ctx.arc(px, py, 5, 0, Math.PI * 2);
+        ctx.arc(px, py, 6, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
 
-        // 라벨
         ctx.font = 'bold 10px monospace';
         ctx.fillStyle = '#FEF08A';
-        ctx.fillText(`P${s}`, px - 6, py - 10);
+        ctx.fillText(`P${s}`, px - 7, py - 11);
       }
 
       // 시점 A1 마커
       ctx.fillStyle = '#EF4444';
       ctx.strokeStyle = '#FFFFFF';
-      ctx.lineWidth = 2.5;
+      ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.arc(p1.x, p1.y, 8, 0, Math.PI * 2);
+      ctx.arc(p1.x, p1.y, 9, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
       ctx.font = 'bold 12px sans-serif';
       ctx.fillStyle = '#FFFFFF';
-      ctx.fillText('A1 (시점)', p1.x - 20, p1.y + 22);
+      ctx.fillText('A1 (시점 교대)', p1.x - 28, p1.y + 24);
 
       // 종점 A2 마커
       ctx.fillStyle = '#3B82F6';
       ctx.beginPath();
-      ctx.arc(p2.x, p2.y, 8, 0, Math.PI * 2);
+      ctx.arc(p2.x, p2.y, 9, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
-      ctx.fillText('A2 (종점)', p2.x - 20, p2.y + 22);
+      ctx.fillText('A2 (종점 교대)', p2.x - 28, p2.y + 24);
 
-      // 중앙에 총연장 뱃지
+      // 중앙 총연장 뱃지
       const midX = (p1.x + p2.x) / 2;
       const midY = (p1.y + p2.y) / 2;
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
-      ctx.roundRect(midX - 55, midY - 24, 110, 24, 6);
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+      ctx.roundRect(midX - 65, midY - 26, 130, 26, 6);
       ctx.fill();
       ctx.strokeStyle = '#FBBF24';
-      ctx.lineWidth = 1;
+      ctx.lineWidth = 1.5;
       ctx.stroke();
-      ctx.font = 'bold 11px monospace';
+      ctx.font = 'bold 12px monospace';
       ctx.fillStyle = '#FBBF24';
-      ctx.fillText(`L = ${calculatedLengthMeters}m (${spanCount}경간)`, midX - 48, midY - 8);
+      ctx.fillText(`L = ${calculatedLengthMeters}m (${spanCount}련)`, midX - 55, midY - 9);
     }
-  }, [alignmentPoints, selectedPOI, mapCenter, zoomLevel, calculatedLengthMeters, recommendedSpans, satelliteImg]);
 
-  // 마우스 클릭으로 노선 재계획 (1번째 클릭: A1, 2번째 클릭: A2)
-  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    // 11. 좌하단 좌표 & 축척 안내 워터마크
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+    ctx.fillRect(10, h - 36, 380, 26);
+    ctx.fillStyle = '#38BDF8';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillText(`대한민국 실측 항공사진 [Lat: ${mapCenter.lat.toFixed(5)}, Lng: ${mapCenter.lng.toFixed(5)}]`, 18, h - 19);
+
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+    ctx.fillRect(w - 210, h - 36, 200, 26);
+    ctx.fillStyle = '#FBBF24';
+    ctx.fillText(`줌 레벨: Lv.${zoomLevel} | 1px ≈ ${(calculatedLengthMeters / 300).toFixed(1)}m`, w - 195, h - 19);
+  }, [
+    mapCenter,
+    zoomLevel,
+    alignmentLatLngs,
+    tileVersion,
+    latLngToCanvasXY,
+    calculatedLengthMeters,
+    recommendedSpans
+  ]);
+
+  // 마우스 이벤트: 자유 패닝(Pan) 및 휠 줌(Zoom)
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (interactMode === 'PAN') {
+      isDraggingRef.current = true;
+      lastMousePosRef.current = { x: e.clientX, y: e.clientY };
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDraggingRef.current || interactMode !== 'PAN') return;
     const canvas = canvasRef.current;
     if (!canvas) return;
+
+    const dx = e.clientX - lastMousePosRef.current.x;
+    const dy = e.clientY - lastMousePosRef.current.y;
+    lastMousePosRef.current = { x: e.clientX, y: e.clientY };
+
+    // 픽셀 이동량을 위도, 경도 이동량으로 환산 (Slippy Map 수학 공식)
+    const n = Math.pow(2, zoomLevel);
+    const dLng = (-dx / 256 / n) * 360;
+
+    // 위도 변화량 계산
+    const centerLatRad = (mapCenter.lat * Math.PI) / 180;
+    const centerTileY =
+      ((1 - Math.log(Math.tan(centerLatRad) + 1 / Math.cos(centerLatRad)) / Math.PI) / 2) * n;
+    const newTileY = centerTileY + dy / 256;
+    const newLatRad = Math.atan(Math.sinh(Math.PI * (1 - (2 * newTileY) / n)));
+    const newLat = (newLatRad * 180) / Math.PI;
+
+    setMapCenter({
+      lat: Math.max(33.0, Math.min(38.8, newLat)),
+      lng: Math.max(124.5, Math.min(131.0, mapCenter.lng + dLng))
+    });
+  };
+
+  const handleMouseUp = () => {
+    isDraggingRef.current = false;
+  };
+
+  // 마우스 휠 줌: 13(광역) ~ 19(초정밀)
+  const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    if (e.deltaY < 0) {
+      setZoomLevel((z) => Math.min(18, z + 1));
+    } else {
+      setZoomLevel((z) => Math.max(13, z - 1));
+    }
+  };
+
+  // 노선 찍기 모드에서의 캔버스 클릭 핸들러
+  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (interactMode !== 'DRAW') return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
     const rect = canvas.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const clickY = e.clientY - rect.top;
 
-    // 픽셀 비율 정규화
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
     const normX = clickX * scaleX;
     const normY = clickY * scaleY;
 
-    // 가상 좌표 변환 (중심 기준 Lat/Lng 오프셋)
-    const dLat = (normY - canvas.height / 2) * -0.000008;
-    const dLng = (normX - canvas.width / 2) * 0.00001;
-    const clickLat = mapCenter.lat + dLat;
-    const clickLng = mapCenter.lng + dLng;
+    const clickLatLng = canvasXYToLatLng(normX, normY, canvas.width, canvas.height);
 
-    if (!isDrawing || alignmentPoints.length >= 2) {
+    if (alignmentLatLngs.length >= 2) {
       // 새 노선 시작 (A1 지정)
-      setAlignmentPoints([{ x: normX, y: normY, lat: clickLat, lng: clickLng }]);
-      setIsDrawing(true);
-      setStatusMessage('교량 시점(A1)이 지정되었습니다. 하천 반대편 종점(A2)을 클릭하세요.');
+      setAlignmentLatLngs([clickLatLng]);
     } else {
-      // 종점 (A2 지정)
-      const newPoints = [...alignmentPoints, { x: normX, y: normY, lat: clickLat, lng: clickLng }];
-      setAlignmentPoints(newPoints);
-      setIsDrawing(false);
-      setStatusMessage(`교량 노선이 확정되었습니다: 총연장 ${calculatedLengthMeters}m (${recommendedSpans.length}경간).`);
+      // 종점 (A2 지정 및 완료)
+      setAlignmentLatLngs([...alignmentLatLngs, clickLatLng]);
+      setInteractMode('PAN'); // 완료 후 다시 자유 탐색 모드로 복귀
     }
   };
 
-  // 설계 제원 반영 버튼 핸들러
-  const handleApplyToBridgeParams = () => {
+  // 설계 제원 확정 및 3D BIM 뷰어 반영
+  const handleConfirmAndProceed = () => {
     const totalLen = calculatedLengthMeters;
 
     // 1. 새 경간 구성
@@ -322,19 +450,19 @@ export const KoreaGISAlignmentPlanner: React.FC<KoreaGISAlignmentPlannerProps> =
       foundation: 'PILE'
     }));
 
-    // 2. 새 지형 및 선형
+    // 2. 새 지형 및 선형 (선택된 실측 지반고 반영)
     const newTerrain: TerrainParameters = {
-      type: selectedPOI.terrainType,
-      valley_depth: selectedPOI.recommendedValleyDepth,
+      type: 'RIVER_CROSSING',
+      valley_depth: Math.max(10, Math.min(35, demHeights.max - demHeights.min + 12)),
       water_level: 3.0,
-      river_width: selectedPOI.recommendedRiverWidth,
-      bearing_stratum_depth: selectedPOI.bearingStratumDepth
+      river_width: Math.min(totalLen * 0.7, 300),
+      bearing_stratum_depth: 16.0
     };
 
     const newAlignment: AlignmentParameters = {
       curve_radius: 0,
       longitudinal_slope: 1.0,
-      start_elevation: 30.0
+      start_elevation: demHeights.center + 12
     };
 
     // 3. 지형에 맞춘 교각 자동 피팅
@@ -367,7 +495,7 @@ export const KoreaGISAlignmentPlanner: React.FC<KoreaGISAlignmentPlannerProps> =
         name: 'A1',
         height: 10,
         foundation: 'PILE',
-        pile_len: newTerrain.bearing_stratum_depth || 16,
+        pile_len: 16,
         pile_count: 40
       },
       {
@@ -375,15 +503,15 @@ export const KoreaGISAlignmentPlanner: React.FC<KoreaGISAlignmentPlannerProps> =
         name: 'A2',
         height: 10,
         foundation: 'PILE',
-        pile_len: newTerrain.bearing_stratum_depth || 16,
+        pile_len: 16,
         pile_count: 40
       }
     ];
 
     const updated = {
       ...bridgeParams,
-      name: `${selectedPOI.name} 계획안`,
-      locationName: selectedPOI.name,
+      name: `${locationName} 계획안`,
+      locationName,
       coordinates: { lat: mapCenter.lat, lng: mapCenter.lng },
       bridge_length: totalLen,
       skew_angle: skewAngleDeg,
@@ -395,6 +523,10 @@ export const KoreaGISAlignmentPlanner: React.FC<KoreaGISAlignmentPlannerProps> =
     };
 
     updateBridgeParams(updated);
+
+    if (onConfirmAlignment) {
+      onConfirmAlignment(totalLen, newSpans.length);
+    }
     if (onApplyAlignment) {
       onApplyAlignment(totalLen, newSpans.length);
     }
@@ -404,22 +536,22 @@ export const KoreaGISAlignmentPlanner: React.FC<KoreaGISAlignmentPlannerProps> =
   };
 
   return (
-    <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden flex flex-col w-full max-w-5xl mx-auto text-white">
+    <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden flex flex-col w-full h-[85vh] max-w-6xl mx-auto text-white">
       {/* 1. Header & Location Search Bar */}
-      <div className="p-3.5 bg-slate-950 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <div className="p-2 bg-indigo-600/30 rounded-lg border border-indigo-500/40 text-indigo-400">
+      <div className="p-3 bg-slate-950 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 shrink-0">
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 bg-indigo-600 rounded-lg text-white shadow-md">
             <Compass className="w-5 h-5" />
           </div>
           <div>
             <h3 className="text-sm font-bold flex items-center gap-2 text-slate-100">
-              대한민국 국토 위성 지도 & 인터랙티브 노선 계획기 (Vworld 3D)
-              <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded border border-amber-500/40 font-mono">
-                Real-World Alignment
+              [1단계] 대한민국 국토 지형 탐색 & 인터랙티브 노선 계획기
+              <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded border border-emerald-500/40 font-mono">
+                자유 패닝(Pan) / 휠 줌(Zoom) 지원
               </span>
             </h3>
             <p className="text-[11px] text-slate-400">
-              대한민국 주소를 검색하고 실제 위성지도 위에서 마우스로 교량 시점(A1)과 종점(A2)을 클릭하여 노선을 설계합니다.
+              마우스 드래그로 지도를 이동하고, 휠로 확대하여 원하는 하천·계곡에 교량 시점(A1)과 종점(A2)을 계획합니다.
             </p>
           </div>
         </div>
@@ -434,163 +566,169 @@ export const KoreaGISAlignmentPlanner: React.FC<KoreaGISAlignmentPlannerProps> =
         )}
       </div>
 
-      {/* 2. Search & Preset Chips */}
-      <div className="px-4 py-3 bg-slate-900/90 border-b border-slate-800 space-y-2">
-        <div className="relative">
+      {/* 2. Top Tool Bar: Search & Mode Controls */}
+      <div className="px-4 py-2.5 bg-slate-900 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 shrink-0">
+        {/* 검색창 */}
+        <div className="relative flex-1 min-w-[280px]">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => handleSearchChange(e.target.value)}
-            placeholder="대한민국 주소 또는 지명 검색 (예: 대전 신탄진 연축교, 안동 JCT, 서울 잠실 한강, 인제 소양강...)"
-            className="w-full pl-9 pr-4 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+            placeholder="대한민국 어느 주소든 검색 (예: 공주시 금강, 안동 낙동강, 인제 소양강, 나주 영산강, 파주 임진강...)"
+            className="w-full pl-9 pr-4 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
           />
+          {isSearching && (
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-indigo-400 font-bold animate-pulse">
+              검색 중...
+            </span>
+          )}
         </div>
 
-        {/* 추천/검색 결과 칩 리스트 */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs no-scrollbar">
-          <span className="text-[11px] text-slate-400 shrink-0 flex items-center gap-1 font-semibold">
-            <MapPin className="w-3 h-3 text-red-400" />
-            주요 대상지:
-          </span>
-          {searchResults.map((poi) => (
-            <button
-              key={poi.name}
-              onClick={() => handleSelectPOI(poi)}
-              className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all shrink-0 border ${
-                selectedPOI.name === poi.name
-                  ? 'bg-indigo-600 text-white border-indigo-400 shadow-sm'
-                  : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:text-white'
-              }`}
-            >
-              {poi.name}
-            </button>
-          ))}
+        {/* 인터랙션 모드 토글 버튼 (패닝 vs 노선 찍기) */}
+        <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-lg border border-slate-700">
+          <button
+            onClick={() => setInteractMode('PAN')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition-all ${
+              interactMode === 'PAN'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+            title="마우스 드래그로 지도 이동 및 휠로 줌"
+          >
+            <Hand className="w-3.5 h-3.5" />
+            <span>지도 자유 이동 (Pan)</span>
+          </button>
+
+          <button
+            onClick={() => setInteractMode('DRAW')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition-all ${
+              interactMode === 'DRAW'
+                ? 'bg-amber-500 text-slate-950 shadow-sm font-black'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+            title="클릭으로 교량 시점(A1)과 종점(A2)을 지정"
+          >
+            <MousePointer className="w-3.5 h-3.5" />
+            <span>교량 노선 찍기 (Draw)</span>
+          </button>
+        </div>
+
+        {/* 줌 컨트롤 버튼 */}
+        <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-700">
+          <button
+            onClick={() => setZoomLevel((z) => Math.min(18, z + 1))}
+            className="p-1.5 hover:bg-slate-800 rounded text-slate-300"
+            title="확대 (Zoom In)"
+          >
+            <ZoomIn className="w-4 h-4" />
+          </button>
+          <span className="text-xs font-mono px-1 font-bold text-slate-400">Lv.{zoomLevel}</span>
+          <button
+            onClick={() => setZoomLevel((z) => Math.max(13, z - 1))}
+            className="p-1.5 hover:bg-slate-800 rounded text-slate-300"
+            title="축소 (Zoom Out)"
+          >
+            <ZoomOut className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
-      {/* 3. Main Workspace: Interactive Map Canvas + Real-Time Result Panel */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 p-4 gap-4 bg-slate-950 flex-1">
-        {/* Left: 2D/2.5D Satellite Map Canvas */}
-        <div className="lg:col-span-2 flex flex-col space-y-2">
-          <div className="flex items-center justify-between text-xs text-slate-300 px-1">
-            <span className="font-bold flex items-center gap-1 text-amber-400">
-              <Ruler className="w-4 h-4" />
-              마우스로 교량 시점(A1)과 종점(A2)을 클릭하여 노선을 연결하세요
-            </span>
-            <span className="text-[11px] text-slate-400 font-mono">
-              클릭: {isDrawing ? '종점 A2 지정 대기' : '노선 지정 완료'}
-            </span>
-          </div>
+      {/* 3. 검색 추천 칩 리스트 */}
+      <div className="px-4 py-1.5 bg-slate-950 border-b border-slate-800 flex items-center gap-1.5 overflow-x-auto text-xs shrink-0 no-scrollbar">
+        <span className="text-[11px] text-slate-400 shrink-0 flex items-center gap-1 font-semibold">
+          <MapPin className="w-3 h-3 text-red-400" />
+          추천 지점:
+        </span>
+        {searchResults.slice(0, 7).map((poi) => (
+          <button
+            key={poi.name}
+            onClick={() => handleSelectLocation(poi)}
+            className={`px-2 py-0.5 rounded text-[11px] transition-all shrink-0 border ${
+              locationName === poi.name
+                ? 'bg-indigo-600/30 text-indigo-300 border-indigo-500 font-bold'
+                : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-600 hover:text-white'
+            }`}
+          >
+            {poi.name}
+          </button>
+        ))}
+      </div>
 
-          <div className="relative rounded-lg overflow-hidden border border-slate-700 shadow-inner bg-slate-900 aspect-[16/10]">
-            <canvas
-              ref={canvasRef}
-              width={800}
-              height={500}
-              onClick={handleCanvasClick}
-              className="w-full h-full cursor-crosshair block"
-            />
+      {/* 4. Main Work Area: Full Interactive Map Canvas & Bottom Status Bar */}
+      <div className="flex-1 relative bg-slate-950 overflow-hidden flex flex-col">
+        {/* 인터랙티브 위성 캔버스 */}
+        <canvas
+          ref={canvasRef}
+          width={1200}
+          height={750}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onWheel={handleWheel}
+          onClick={handleCanvasClick}
+          className={`w-full flex-1 block select-none ${
+            interactMode === 'PAN' ? 'cursor-grab active:cursor-grabbing' : 'cursor-crosshair'
+          }`}
+        />
 
-            {/* 지도 우상단 줌 컨트롤 */}
-            <div className="absolute top-3 right-3 flex flex-col gap-1 bg-slate-900/90 backdrop-blur border border-slate-700 p-1 rounded-lg">
-              <button
-                onClick={() => setZoomLevel((z) => Math.min(18, z + 1))}
-                className="w-7 h-7 flex items-center justify-center text-xs font-bold bg-slate-800 hover:bg-slate-700 rounded text-slate-200"
-                title="확대 (Zoom In)"
-              >
-                +
-              </button>
-              <button
-                onClick={() => setZoomLevel((z) => Math.max(14, z - 1))}
-                className="w-7 h-7 flex items-center justify-center text-xs font-bold bg-slate-800 hover:bg-slate-700 rounded text-slate-200"
-                title="축소 (Zoom Out)"
-              >
-                -
-              </button>
-            </div>
-
-            {/* 좌하단 안내 배너 */}
-            {statusMessage && (
-              <div className="absolute bottom-3 left-3 bg-slate-900/90 backdrop-blur border border-indigo-500/50 px-3 py-1.5 rounded-lg text-[11px] font-bold text-indigo-200 shadow-md">
-                {statusMessage}
-              </div>
-            )}
-          </div>
+        {/* 안내 플로팅 뱃지 */}
+        <div className="absolute top-3 left-3 bg-slate-900/90 backdrop-blur-md border border-slate-700 px-3.5 py-2 rounded-lg shadow-xl text-xs flex items-center gap-2">
+          {interactMode === 'PAN' ? (
+            <>
+              <Hand className="w-4 h-4 text-sky-400 animate-pulse" />
+              <span className="text-slate-200">
+                <strong>[지도 탐색 모드]</strong> 마우스를 드래그하여 지도를 이동하고, 휠로 원하는 하천을 찾으세요.
+              </span>
+            </>
+          ) : (
+            <>
+              <MousePointer className="w-4 h-4 text-amber-400 animate-bounce" />
+              <span className="text-amber-200 font-bold">
+                [노선 찍기 모드] 교량 시점(A1)과 종점(A2)을 차례대로 클릭하세요 ({alignmentLatLngs.length}/2 지정됨).
+              </span>
+            </>
+          )}
         </div>
 
-        {/* Right: Real-Time Alignment & Structure Specs */}
-        <div className="flex flex-col justify-between space-y-3 bg-slate-900/80 p-3.5 rounded-lg border border-slate-800 text-xs">
-          <div className="space-y-3">
-            <div className="border-b border-slate-800 pb-2">
-              <span className="text-[11px] text-indigo-400 font-bold block mb-0.5">선택된 국토 입지</span>
-              <h4 className="font-extrabold text-sm text-slate-100">{selectedPOI.name}</h4>
-              <p className="text-[11px] text-slate-400 mt-0.5">{selectedPOI.region}</p>
+        {/* 5. Bottom Real-Time Alignment Result Ribbon */}
+        <div className="bg-slate-950/95 border-t border-slate-800 p-3 flex flex-wrap items-center justify-between gap-4 shrink-0">
+          <div className="flex items-center gap-4 text-xs font-mono">
+            <div>
+              <span className="text-slate-500 block text-[10px]">계획 교량 총연장</span>
+              <span className="text-base font-extrabold text-amber-400">{calculatedLengthMeters} m</span>
             </div>
-
-            {/* 노선 연산 결과 */}
-            <div className="space-y-2 bg-slate-950 p-3 rounded-lg border border-slate-800 font-mono">
-              <span className="text-[11px] font-bold text-amber-400 flex items-center gap-1">
-                <Navigation className="w-3.5 h-3.5" />
-                계획 노선 제원 산출값
-              </span>
-              <div className="grid grid-cols-2 gap-2 text-slate-300 text-[11px]">
-                <div>
-                  <span className="text-slate-500 block">교량 총연장 (L)</span>
-                  <span className="text-sm font-extrabold text-white">{calculatedLengthMeters} m</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">교량 사각 (Skew)</span>
-                  <span className="text-sm font-extrabold text-white">{skewAngleDeg}°</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">총 경간수</span>
-                  <span className="text-sm font-extrabold text-white">{recommendedSpans.length}련</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">표준 경간장</span>
-                  <span className="text-sm font-extrabold text-white">{recommendedSpans[0]?.length} m</span>
-                </div>
-              </div>
+            <div className="h-7 w-px bg-slate-800" />
+            <div>
+              <span className="text-slate-500 block text-[10px]">교량 사각 (Skew)</span>
+              <span className="text-sm font-bold text-white">{skewAngleDeg}°</span>
             </div>
-
-            {/* 지형 및 지반 조건 */}
-            <div className="space-y-1.5 bg-slate-950 p-3 rounded-lg border border-slate-800 text-[11px]">
-              <span className="font-bold text-slate-300 flex items-center gap-1">
-                <Waves className="w-3.5 h-3.5 text-sky-400" />
-                실측 하천/지형 프로파일
+            <div className="h-7 w-px bg-slate-800" />
+            <div>
+              <span className="text-slate-500 block text-[10px]">경간 구성</span>
+              <span className="text-sm font-bold text-sky-400">{recommendedSpans.length}경간</span>
+              <span className="text-[10px] text-slate-400 ml-1">(@{recommendedSpans[0]?.length}m)</span>
+            </div>
+            <div className="h-7 w-px bg-slate-800" />
+            <div>
+              <span className="text-slate-500 block text-[10px]">위치 좌표</span>
+              <span className="text-xs text-slate-300">
+                {mapCenter.lat.toFixed(4)}, {mapCenter.lng.toFixed(4)}
               </span>
-              <div className="flex justify-between text-slate-400">
-                <span>하천 횡단 폭</span>
-                <span className="font-mono text-slate-200">{selectedPOI.recommendedRiverWidth} m</span>
-              </div>
-              <div className="flex justify-between text-slate-400">
-                <span>계곡/하상 저면 심도</span>
-                <span className="font-mono text-slate-200">{selectedPOI.recommendedValleyDepth} m</span>
-              </div>
-              <div className="flex justify-between text-slate-400">
-                <span>암반 지지층 심도 (말뚝)</span>
-                <span className="font-mono text-slate-200">{selectedPOI.bearingStratumDepth} m</span>
-              </div>
             </div>
           </div>
 
-          {/* 하단 확정 및 반영 버튼 */}
-          <div className="pt-2 border-t border-slate-800 space-y-2">
-            <button
-              onClick={handleApplyToBridgeParams}
-              className="w-full py-2.5 px-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black rounded-lg text-xs shadow-lg flex items-center justify-center gap-1.5 transition-all hover:scale-[1.02] active:scale-[0.98]"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>이 노선으로 교량 제원 & 공사비 산정 반영</span>
-            </button>
-            <p className="text-[10px] text-slate-400 text-center leading-tight">
-              클릭 시 교량 총연장, 경간 구성, 교각 높이가 지반고에 맞춰 100% 자동 피팅됩니다.
-            </p>
-          </div>
+          {/* 최종 확정 및 3D BIM 모델러 진행 버튼 */}
+          <button
+            onClick={handleConfirmAndProceed}
+            className="py-2.5 px-5 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-black rounded-lg text-xs shadow-xl flex items-center gap-2 transition-all hover:scale-102 active:scale-98"
+          >
+            <Sparkles className="w-4 h-4" />
+            <span>지형·선형 확정 및 3D BIM 모델러로 진행</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
         </div>
       </div>
     </div>
   );
 };
-

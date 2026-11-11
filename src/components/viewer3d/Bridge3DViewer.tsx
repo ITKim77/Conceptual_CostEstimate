@@ -671,7 +671,7 @@ export const Bridge3DViewer: React.FC = () => {
   }, [bridgeParams, showPiles, showTerrain, showAlignment, wireframe, realTerrain]);
 
   return (
-    <div className="relative w-full h-[520px] rounded-xl overflow-hidden border border-slate-200 bg-slate-900 shadow-inner flex flex-col">
+    <div className="relative w-full h-[640px] rounded-xl overflow-hidden border border-slate-200 bg-slate-900 shadow-inner flex flex-col">
       {/* 3D Canvas Container */}
       <div ref={containerRef} className="w-full flex-1 cursor-grab active:cursor-grabbing" />
 

@@ -17,7 +17,10 @@ import {
   Sparkles,
   GitBranch,
   RotateCcw,
-  AlertTriangle
+  AlertTriangle,
+  PanelRightClose,
+  PanelRightOpen,
+  Compass
 } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -35,6 +38,8 @@ export const App: React.FC = () => {
   } = useBridgeStore();
 
   const [showResetModal, setShowResetModal] = useState(false);
+  // 🌟 지형·선형 작업 시 3D 뷰어를 대형 화면으로 확장하기 위한 파라메트릭 패널 최소화 토글
+  const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
 
   const totalCostBillion = (costBreakdown.total_construction_cost / 100000000).toFixed(2);
   const directCostBillion = (costBreakdown.direct_cost_total / 100000000).toFixed(2);
@@ -174,9 +179,52 @@ export const App: React.FC = () => {
       <main className="max-w-7xl mx-auto px-4 py-5 flex-1 w-full">
         {selectedViewMode === '3D' && (
           <div className="space-y-4">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-              {/* Left 7 Columns: 3D BIM Viewer & Viewport Controls */}
-              <div className="lg:col-span-7 flex flex-col gap-4">
+            {/* 🌟 지형·선형 우선 워크플로우 안내 및 패널 최소화/확장 컨트롤 바 */}
+            <div className="flex items-center justify-between bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-2xs">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
+                  <Compass className="w-4 h-4 text-indigo-600" />
+                  설계 진행 워크플로우:
+                </span>
+                <div className="flex items-center gap-1 text-xs">
+                  <span className="px-2.5 py-1 bg-indigo-50 text-indigo-700 font-bold rounded-lg border border-indigo-200 flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-indigo-600"></span>
+                    1단계: 대한민국 지형·선형 계획 (GIS 위성 & 3D)
+                  </span>
+                  <span className="text-slate-400 font-bold">→</span>
+                  <span className="px-2.5 py-1 bg-slate-100 text-slate-600 font-semibold rounded-lg border border-slate-200">
+                    2단계: 구조물 제원 조율 & 공사비 산정
+                  </span>
+                </div>
+              </div>
+
+              {/* 파라메트릭 패널 최소화/확장 토글 버튼 */}
+              <button
+                onClick={() => setIsPanelCollapsed(!isPanelCollapsed)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
+                  isPanelCollapsed
+                    ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 border-amber-600 shadow-sm'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                }`}
+                title={isPanelCollapsed ? '파라메트릭 제원 패널을 펼칩니다' : '3D 뷰어를 대형 전체 화면으로 확장하고 패널을 접습니다'}
+              >
+                {isPanelCollapsed ? (
+                  <>
+                    <PanelRightOpen className="w-4 h-4" />
+                    <span>파라메트릭 제원 패널 펼치기</span>
+                  </>
+                ) : (
+                  <>
+                    <PanelRightClose className="w-4 h-4" />
+                    <span>패널 최소화 (3D 뷰어 대형 확장)</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+              {/* Left Viewport: 3D BIM Viewer & Viewport Controls (패널 최소화 시 12열 전체 차지) */}
+              <div className={`${isPanelCollapsed ? 'lg:col-span-12' : 'lg:col-span-7'} flex flex-col gap-4 transition-all duration-300`}>
                 <Bridge3DViewer />
 
                 {/* Sub-breakdown Cards */}
@@ -211,10 +259,12 @@ export const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* Right 5 Columns: SSOT Parametric Input Panel */}
-              <div className="lg:col-span-5 h-[620px]">
-                <ParametricInputPanel />
-              </div>
+              {/* Right Columns: SSOT Parametric Input Panel (최소화 토글 지원) */}
+              {!isPanelCollapsed && (
+                <div className="lg:col-span-5 h-[640px] animate-fadeIn">
+                  <ParametricInputPanel />
+                </div>
+              )}
             </div>
           </div>
         )}
