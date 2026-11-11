@@ -19,6 +19,7 @@ import {
   DEFAULT_ALIGNMENT,
   calculatePierFittings
 } from '../domain/engine/terrain_alignment_calculator';
+import { KOREA_LOCATION_PRESETS } from '../domain/constants/korea_terrain_presets';
 
 interface BridgeStoreState {
   // 1. [Red] 원천 사용자 입력 상태 (SSOT)
@@ -42,6 +43,7 @@ interface BridgeStoreState {
   updateTerrainParams: (partial: Partial<TerrainParameters>) => void;
   updateAlignmentParams: (partial: Partial<AlignmentParameters>) => void;
   autoFitPiersToTerrain: () => void;
+  loadKoreaLocationPreset: (presetId: string) => void;
   updateSpan: (index: number, span: Partial<SpanItem>) => void;
   addSpan: (type?: SuperstructureType, length?: number) => void;
   removeSpan: (index: number) => void;
@@ -123,7 +125,7 @@ export function createDefaultCleanState() {
     costBreakdown: baseBreakdown,
     selectedViewMode: '3D' as const,
     cameraPreset: 'iso' as const,
-    activeTab: 'basic' as const
+    activeTab: 'terrain' as const
   };
 }
 
@@ -210,6 +212,89 @@ export const useBridgeStore = create<BridgeStoreState>((set, get) => ({
       return {
         bridgeParams: newParams,
         costBreakdown: newBreakdown
+      };
+    });
+  },
+
+  loadKoreaLocationPreset: (presetId: string) => {
+    const preset = KOREA_LOCATION_PRESETS.find((p) => p.id === presetId);
+    if (!preset) return;
+
+    set((state) => {
+      // 1. 프리셋에서 지형 및 선형 가져오기
+      const newTerrain: TerrainParameters = { ...preset.terrain };
+      const newAlignment: AlignmentParameters = { ...preset.alignment };
+
+      // 2. 권장 경간 구성 적용
+      const totalLen = preset.recommendedSpans.reduce((sum, s) => sum + s.length, 0);
+      const newSpans: SpanItem[] = preset.recommendedSpans.map((s, idx) => ({
+        id: `span_${idx + 1}`,
+        span_index: idx + 1,
+        span_length: s.length,
+        type: s.type as SuperstructureType,
+        foundation: 'PILE'
+      }));
+
+      // 3. 지형/선형에 따른 교각 배치 및 자동 피팅 계산
+      let cumX = 0;
+      const newPiers: PierItem[] = [];
+      for (let i = 0; i < newSpans.length - 1; i++) {
+        cumX += newSpans[i].span_length;
+        const { fittedPierHeight, fittedPileLength } = calculatePierFittings(
+          cumX,
+          totalLen,
+          2.5,
+          newTerrain,
+          newAlignment
+        );
+        newPiers.push({
+          id: `pier_${i + 1}`,
+          name: `P${i + 1}`,
+          height: fittedPierHeight,
+          diameter: 2.5,
+          type: 'T_PIER',
+          foundation: 'PILE',
+          pile_len: fittedPileLength,
+          pile_count: 50
+        });
+      }
+
+      const newAbutments: AbutmentItem[] = [
+        {
+          id: 'abut_1',
+          name: 'A1',
+          height: 10,
+          foundation: 'PILE',
+          pile_len: newTerrain.bearing_stratum_depth || 16,
+          pile_count: 40
+        },
+        {
+          id: 'abut_2',
+          name: 'A2',
+          height: 10,
+          foundation: 'PILE',
+          pile_len: newTerrain.bearing_stratum_depth || 16,
+          pile_count: 40
+        }
+      ];
+
+      const newBridgeParams: BridgeParameters = {
+        ...state.bridgeParams,
+        name: `${preset.name} 검토안`,
+        bridge_length: totalLen,
+        bridge_width: preset.recommendedBridgeWidth || 24,
+        spans: newSpans,
+        piers: newPiers,
+        abutments: newAbutments,
+        terrain: newTerrain,
+        alignment: newAlignment
+      };
+
+      const newCostBreakdown = calculateBridgeCost(newBridgeParams);
+
+      return {
+        bridgeParams: newBridgeParams,
+        costBreakdown: newCostBreakdown
       };
     });
   },

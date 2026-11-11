@@ -18,6 +18,10 @@ import {
   DEFAULT_TERRAIN,
   DEFAULT_ALIGNMENT
 } from '../../domain/engine/terrain_alignment_calculator';
+import {
+  generateKoreaAerialOrthophotoCanvas,
+  KOREA_LOCATION_PRESETS
+} from '../../domain/constants/korea_terrain_presets';
 
 export const Bridge3DViewer: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -33,6 +37,7 @@ export const Bridge3DViewer: React.FC = () => {
   const [wireframe, setWireframe] = useState(false);
   const [showPiles, setShowPiles] = useState(true);
   const [showTerrain, setShowTerrain] = useState(true);
+  const [showAlignment, setShowAlignment] = useState(true);
   const [showDimensions, setShowDimensions] = useState(true);
 
   // 1. Scene & Renderer Initialization
@@ -273,16 +278,52 @@ export const Bridge3DViewer: React.FC = () => {
 
       terrainGeo.computeVertexNormals();
 
-      // 지형 재질 (자연스러운 토사/잔디 텍스처 컬러)
+      // 대한민국 위성 정사영상 캔버스 텍스처 생성 및 적용 (Step 1.2)
+      const orthoCanvas = generateKoreaAerialOrthophotoCanvas(terrain.type, 1024, 512);
+      const orthoTexture = new THREE.CanvasTexture(orthoCanvas);
+      orthoTexture.wrapS = THREE.ClampToEdgeWrapping;
+      orthoTexture.wrapT = THREE.ClampToEdgeWrapping;
+
+      // 지형 재질 (정사영상 텍스처 매핑)
       const terrainMat = new THREE.MeshStandardMaterial({
-        color: 0x334D36, // 차분한 딥 포레스트 그린 / 올리브 토사
-        roughness: 0.9,
+        map: orthoTexture,
+        roughness: 0.85,
         metalness: 0.05,
         wireframe
       });
       const terrainMesh = new THREE.Mesh(terrainGeo, terrainMat);
       terrainMesh.receiveShadow = true;
       tGroup.add(terrainMesh);
+
+      // 도로 선형 가이드라인 (Road Alignment 3D Centerline - Step 2)
+      if (showAlignment) {
+        const alignPts: THREE.Vector3[] = [];
+        const steps = 60;
+        for (let s = 0; s <= steps; s++) {
+          const ax = (s / steps) * totalBridgeLen;
+          const ay = calculateFormationGround(ax, alignment) + 0.8; // 노면 살짝 상공
+          let az = 0;
+          if (alignment.curve_radius && alignment.curve_radius > 0) {
+            const halfLen = totalBridgeLen / 2;
+            const dx = ax - halfLen;
+            const R = alignment.curve_radius;
+            if (R * R >= dx * dx) {
+              az = R - Math.sqrt(R * R - dx * dx);
+            }
+          }
+          alignPts.push(new THREE.Vector3(ax, ay, az));
+        }
+        const alignGeo = new THREE.BufferGeometry().setFromPoints(alignPts);
+        const alignMat = new THREE.LineDashedMaterial({
+          color: 0xFBBF24, // 선명한 앰버/옐로우 도로 중심선
+          linewidth: 3,
+          dashSize: 4,
+          gapSize: 2
+        });
+        const alignLine = new THREE.Line(alignGeo, alignMat);
+        alignLine.computeLineDistances();
+        bGroup.add(alignLine);
+      }
 
       // 하천 수면 메쉬 (River Water Plane)
       if (terrain.type === 'RIVER_CROSSING' && minWaterY !== Infinity) {
@@ -562,7 +603,7 @@ export const Bridge3DViewer: React.FC = () => {
         bGroup.add(instancedPiles);
       }
     }
-  }, [bridgeParams, showPiles, showTerrain, wireframe]);
+  }, [bridgeParams, showPiles, showTerrain, showAlignment, wireframe]);
 
   return (
     <div className="relative w-full h-[520px] rounded-xl overflow-hidden border border-slate-200 bg-slate-900 shadow-inner flex flex-col">
@@ -580,8 +621,15 @@ export const Bridge3DViewer: React.FC = () => {
         <span className="font-mono text-slate-200">B={bridgeParams.bridge_width}m</span>
         <span className="text-slate-400">({bridgeParams.spans.length}경간)</span>
         {bridgeParams.terrain && (
-          <span className="text-[10px] bg-indigo-900/70 text-indigo-200 px-1.5 py-0.5 rounded border border-indigo-700/50">
-            {bridgeParams.terrain.type === 'RIVER_CROSSING' ? '하천횡단' : bridgeParams.terrain.type === 'VALLEY' ? '계곡지형' : '평지교차'}
+          <span className="text-[10px] bg-indigo-900/70 text-indigo-200 px-1.5 py-0.5 rounded border border-indigo-700/50 flex items-center gap-1">
+            <Mountain className="w-3 h-3 text-indigo-400" />
+            {bridgeParams.terrain.type === 'RIVER_CROSSING' ? '하천횡단 (정사영상)' : bridgeParams.terrain.type === 'VALLEY' ? '협곡지형 (DEM)' : '평지교차'}
+          </span>
+        )}
+        {bridgeParams.alignment && (
+          <span className="text-[10px] bg-amber-950/70 text-amber-300 px-1.5 py-0.5 rounded border border-amber-700/50 flex items-center gap-1 font-mono">
+            <Compass className="w-3 h-3 text-amber-400" />
+            {bridgeParams.alignment.curve_radius && bridgeParams.alignment.curve_radius > 0 ? `R=${bridgeParams.alignment.curve_radius}m` : '직선'} / {bridgeParams.alignment.longitudinal_slope}%
           </span>
         )}
       </div>
@@ -593,10 +641,21 @@ export const Bridge3DViewer: React.FC = () => {
           className={`flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-bold transition-all ${
             showTerrain ? 'bg-emerald-600 text-white shadow' : 'text-slate-400 hover:text-white'
           }`}
-          title="3D 계곡/하천 지형 메쉬 렌더링 전환"
+          title="3D 대한민국 지형 메쉬 및 정사영상 텍스처 렌더링 전환"
         >
           <Mountain className="w-3.5 h-3.5" />
-          <span>지형 {showTerrain ? 'ON' : 'OFF'}</span>
+          <span>지형·정사영상 {showTerrain ? 'ON' : 'OFF'}</span>
+        </button>
+
+        <button
+          onClick={() => setShowAlignment(!showAlignment)}
+          className={`flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-bold transition-all ${
+            showAlignment ? 'bg-amber-600 text-white shadow' : 'text-slate-400 hover:text-white'
+          }`}
+          title="3D 도로 선형 중심선 가이드라인 투영 전환"
+        >
+          <Compass className="w-3.5 h-3.5" />
+          <span>선형 중심선</span>
         </button>
 
         <button
@@ -613,7 +672,7 @@ export const Bridge3DViewer: React.FC = () => {
         <button
           onClick={() => setWireframe(!wireframe)}
           className={`flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-bold transition-all ${
-            wireframe ? 'bg-amber-600 text-white shadow' : 'text-slate-400 hover:text-white'
+            wireframe ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white'
           }`}
           title="와이어프레임 구조 투영"
         >
