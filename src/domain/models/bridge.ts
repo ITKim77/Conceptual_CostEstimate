@@ -74,6 +74,22 @@ export interface PierItem {
   pile_count: number; // [Red]
 }
 
+export type TerrainType = 'RIVER_CROSSING' | 'VALLEY' | 'FLAT_CROSSROAD' | 'MOUNTAIN_PASS';
+
+export interface TerrainParameters {
+  type: TerrainType;
+  valley_depth: number; // m (지반 저면 심도, 예: 18m) [Red]
+  water_level: number; // m (수면 표고 또는 하천 수위, 예: 3m) [Red]
+  river_width: number; // m (하천 폭원 또는 계곡 바닥 폭, 예: 60m) [Red]
+  bearing_stratum_depth: number; // m (지표면 아래 지지층 심도 -> 말뚝 소요 길이, 예: 15m) [Red]
+}
+
+export interface AlignmentParameters {
+  curve_radius: number; // m (평면 곡선 반경, 0은 직선, 300~2000m 곡선교) [Red]
+  longitudinal_slope: number; // % (종단경사, -3.0% ~ +3.0%) [Red]
+  start_elevation: number; // m (시점 계획고 FG0, 예: 25.0m) [Red]
+}
+
 export interface BridgeParameters {
   id: string;
   name: string; // [Red]
@@ -88,6 +104,8 @@ export interface BridgeParameters {
   steel_price_ton: number; // 원/톤 (기본 715,000) [Red]
   apply_mss_adjustment: boolean; // [Red]
   apply_fsm_adjustment: boolean; // [Red]
+  terrain?: TerrainParameters; // [Red] 지형 파라미터
+  alignment?: AlignmentParameters; // [Red] 선형 파라미터
   description?: string;
 }
 

@@ -8,10 +8,17 @@ import {
   PierItem,
   AbutmentItem,
   PileMethod,
-  SuperstructureType
+  SuperstructureType,
+  TerrainParameters,
+  AlignmentParameters
 } from '../domain/models/bridge';
 import { calculateBridgeCost } from '../domain/engine/cost_calculator';
 import { PRESET_BENCHMARKS, BenchmarkItem } from '../domain/constants/rev04_database';
+import {
+  DEFAULT_TERRAIN,
+  DEFAULT_ALIGNMENT,
+  calculatePierFittings
+} from '../domain/engine/terrain_alignment_calculator';
 
 interface BridgeStoreState {
   // 1. [Red] 원천 사용자 입력 상태 (SSOT)
@@ -27,11 +34,14 @@ interface BridgeStoreState {
   // 3. UI 조작 상태
   selectedViewMode: '3D' | 'TABLE' | 'ANALYTICS' | 'BENCHMARK';
   cameraPreset: 'iso' | 'elevation' | 'cross' | 'plan';
-  activeTab: 'basic' | 'spans' | 'substructure' | 'piles';
+  activeTab: 'basic' | 'spans' | 'substructure' | 'piles' | 'terrain';
 
   // 4. 액션 (Red 인풋 갱신 및 파생 상태 동기화)
   setProjectName: (name: string) => void;
   updateBridgeParams: (partial: Partial<BridgeParameters>) => void;
+  updateTerrainParams: (partial: Partial<TerrainParameters>) => void;
+  updateAlignmentParams: (partial: Partial<AlignmentParameters>) => void;
+  autoFitPiersToTerrain: () => void;
   updateSpan: (index: number, span: Partial<SpanItem>) => void;
   addSpan: (type?: SuperstructureType, length?: number) => void;
   removeSpan: (index: number) => void;
@@ -65,7 +75,7 @@ interface BridgeStoreState {
   // UI 상태 액션
   setViewMode: (mode: '3D' | 'TABLE' | 'ANALYTICS' | 'BENCHMARK') => void;
   setCameraPreset: (preset: 'iso' | 'elevation' | 'cross' | 'plan') => void;
-  setActiveTab: (tab: 'basic' | 'spans' | 'substructure' | 'piles') => void;
+  setActiveTab: (tab: 'basic' | 'spans' | 'substructure' | 'piles' | 'terrain') => void;
 }
 
 export const DEFAULT_CLEAN_BRIDGE: BridgeParameters = {
@@ -92,6 +102,8 @@ export const DEFAULT_CLEAN_BRIDGE: BridgeParameters = {
   steel_price_ton: 715000,
   apply_mss_adjustment: false,
   apply_fsm_adjustment: false,
+  terrain: JSON.parse(JSON.stringify(DEFAULT_TERRAIN)),
+  alignment: JSON.parse(JSON.stringify(DEFAULT_ALIGNMENT)),
   description: '신규 교량 기본 설계 (40m × 3경간 PSC BEAM, B=24m 왕복 4차로 표준)'
 };
 
@@ -122,6 +134,79 @@ export const useBridgeStore = create<BridgeStoreState>((set, get) => ({
     set((state) => {
       const newParams = { ...state.bridgeParams, ...partial };
       const newBreakdown = calculateBridgeCost(newParams);
+      return {
+        bridgeParams: newParams,
+        costBreakdown: newBreakdown
+      };
+    });
+  },
+
+  updateTerrainParams: (partial) => {
+    set((state) => {
+      const currentTerrain = state.bridgeParams.terrain || DEFAULT_TERRAIN;
+      const newTerrain = { ...currentTerrain, ...partial };
+      const newParams = { ...state.bridgeParams, terrain: newTerrain };
+      return {
+        bridgeParams: newParams
+      };
+    });
+  },
+
+  updateAlignmentParams: (partial) => {
+    set((state) => {
+      const currentAlignment = state.bridgeParams.alignment || DEFAULT_ALIGNMENT;
+      const newAlignment = { ...currentAlignment, ...partial };
+      const newParams = { ...state.bridgeParams, alignment: newAlignment };
+      return {
+        bridgeParams: newParams
+      };
+    });
+  },
+
+  autoFitPiersToTerrain: () => {
+    set((state) => {
+      const { bridgeParams } = state;
+      const terrain = bridgeParams.terrain || DEFAULT_TERRAIN;
+      const alignment = bridgeParams.alignment || DEFAULT_ALIGNMENT;
+      const bridgeLength = bridgeParams.bridge_length;
+      const spans = bridgeParams.spans;
+
+      let cumX = 0;
+      const newPiers = bridgeParams.piers.map((pier, idx) => {
+        if (idx < spans.length - 1) {
+          cumX += spans[idx].span_length;
+        } else {
+          cumX = (bridgeLength / (bridgeParams.piers.length + 1)) * (idx + 1);
+        }
+
+        const { fittedPierHeight, fittedPileLength } = calculatePierFittings(
+          cumX,
+          bridgeLength,
+          2.5,
+          terrain,
+          alignment
+        );
+
+        return {
+          ...pier,
+          height: fittedPierHeight,
+          pile_len: fittedPileLength
+        };
+      });
+
+      const newAbuts = bridgeParams.abutments.map((abut) => ({
+        ...abut,
+        pile_len: terrain.bearing_stratum_depth || 15
+      }));
+
+      const newParams = {
+        ...bridgeParams,
+        piers: newPiers,
+        abutments: newAbuts
+      };
+
+      const newBreakdown = calculateBridgeCost(newParams);
+
       return {
         bridgeParams: newParams,
         costBreakdown: newBreakdown

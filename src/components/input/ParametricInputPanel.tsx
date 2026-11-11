@@ -3,7 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { useBridgeStore } from '../../store/useBridgeStore';
 import { SSOTInput, SSOTSelect, SSOTConstant } from '../common/SSOTFields';
 import { SUPERSTRUCTURE_CATALOG, PILE_UNIT_PRICES, REV04_CONSTANTS } from '../../domain/constants/rev04_database';
-import { SuperstructureType, PileMethod, FoundationType } from '../../domain/models/bridge';
+import { SuperstructureType, PileMethod, FoundationType, TerrainType } from '../../domain/models/bridge';
+import { DEFAULT_TERRAIN, DEFAULT_ALIGNMENT } from '../../domain/engine/terrain_alignment_calculator';
 import {
   Plus,
   Trash2,
@@ -14,7 +15,9 @@ import {
   CheckCircle2,
   Wrench,
   AlertCircle,
-  FolderPlus
+  FolderPlus,
+  Mountain,
+  Sparkles
 } from 'lucide-react';
 
 export const ParametricInputPanel: React.FC = () => {
@@ -32,6 +35,9 @@ export const ParametricInputPanel: React.FC = () => {
     updateAbutment,
     setPileMethod,
     applyBatchPileParams,
+    updateTerrainParams,
+    updateAlignmentParams,
+    autoFitPiersToTerrain,
     // 대안 관리 액션 (원안/대안 구분 없음)
     alternatives,
     activeAlternativeId,
@@ -159,6 +165,16 @@ export const ParametricInputPanel: React.FC = () => {
           }`}
         >
           기초·말뚝 ({bridgeParams.piers.length + bridgeParams.abutments.length}개소)
+        </button>
+        <button
+          onClick={() => setActiveTab('terrain')}
+          className={`flex-1 py-1.5 rounded-lg transition-all ${
+            activeTab === 'terrain'
+              ? 'bg-white text-indigo-700 shadow-sm font-bold'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          지형·선형
         </button>
       </div>
 
@@ -632,6 +648,147 @@ export const ParametricInputPanel: React.FC = () => {
                   description="직접기초 심도보강 및 교대 배면 Mass"
                 />
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* 5. 🌟 지형·선형 탭 (Step 1.1) */}
+        {activeTab === 'terrain' && (
+          <div className="space-y-4">
+            {/* 안내 배너 */}
+            <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-lg text-xs space-y-1.5 text-slate-700">
+              <div className="flex items-center gap-1.5 font-bold text-indigo-950">
+                <Mountain className="w-4 h-4 text-indigo-600" />
+                <span>지형 조건 및 도로 선형 (Terrain & Alignment) 파라메터</span>
+              </div>
+              <p className="text-[11px] leading-relaxed text-slate-600">
+                교량이 횡단하는 <strong>계곡/하천 지형 프로파일</strong>과 <strong>도로 선형(곡률, 종단경사)</strong>을 설정합니다.
+                설정 후 아래 <strong>[지형 기반 교각/말뚝 자동 피팅]</strong> 버튼을 누르면 지반고에 맞춰 교각 높이가 100% 자동 산정됩니다.
+              </p>
+            </div>
+
+            {/* 지형 조건 설정 */}
+            <div className="space-y-3 p-3 rounded-lg border-2 border-red-200 bg-red-50/10">
+              <span className="text-xs font-bold text-red-700 flex items-center gap-1">
+                <Mountain className="w-3.5 h-3.5 text-red-500" />
+                1. 횡단 지형 조건 설정 (SSOT Red)
+              </span>
+
+              <SSOTSelect
+                label="지형 횡단 유형"
+                value={bridgeParams.terrain?.type || DEFAULT_TERRAIN.type}
+                onChange={(e) => updateTerrainParams({ type: e.target.value as TerrainType })}
+              >
+                <option value="RIVER_CROSSING">하천 횡단형 (중앙 하천 및 양안 제방/둔치)</option>
+                <option value="VALLEY">산악 V자 계곡형 (중앙 심도가 깊은 협곡 지형)</option>
+                <option value="FLAT_CROSSROAD">평지 및 교차로 횡단형 (기존 도로/철도 상공 통과)</option>
+                <option value="MOUNTAIN_PASS">산악 고개/능선형 (절토 접속 및 복합 지형)</option>
+              </SSOTSelect>
+
+              <div className="grid grid-cols-2 gap-2">
+                <SSOTInput
+                  label="계곡/하상 저면 심도"
+                  unit="m"
+                  type="number"
+                  min="5"
+                  max="60"
+                  step="1"
+                  value={bridgeParams.terrain?.valley_depth ?? DEFAULT_TERRAIN.valley_depth}
+                  onChange={(e) => updateTerrainParams({ valley_depth: parseFloat(e.target.value) || 0 })}
+                  helperText="시종점 지반 대비 최대 저하 심도"
+                />
+                <SSOTInput
+                  label="하천/계곡 바닥 폭원"
+                  unit="m"
+                  type="number"
+                  min="20"
+                  max="500"
+                  step="5"
+                  value={bridgeParams.terrain?.river_width ?? DEFAULT_TERRAIN.river_width}
+                  onChange={(e) => updateTerrainParams({ river_width: parseFloat(e.target.value) || 0 })}
+                  helperText="평탄 하상 또는 계곡 바닥 폭"
+                />
+              </div>
+
+              <SSOTInput
+                label="지지층(풍화암/연암) 출현 심도"
+                unit="m"
+                type="number"
+                min="5"
+                max="50"
+                step="1"
+                value={bridgeParams.terrain?.bearing_stratum_depth ?? DEFAULT_TERRAIN.bearing_stratum_depth}
+                onChange={(e) => updateTerrainParams({ bearing_stratum_depth: parseFloat(e.target.value) || 0 })}
+                helperText="지표면 아래 말뚝 소요 근입 심도"
+              />
+            </div>
+
+            {/* 선형 계획 설정 */}
+            <div className="space-y-3 p-3 rounded-lg border-2 border-red-200 bg-red-50/10">
+              <span className="text-xs font-bold text-red-700 flex items-center gap-1">
+                <Sliders className="w-3.5 h-3.5 text-red-500" />
+                2. 도로 선형 계획 (SSOT Red)
+              </span>
+
+              <div className="grid grid-cols-2 gap-2">
+                <SSOTInput
+                  label="평면 곡선 반경 (R)"
+                  unit="m"
+                  type="number"
+                  min="0"
+                  max="3000"
+                  step="50"
+                  value={bridgeParams.alignment?.curve_radius ?? DEFAULT_ALIGNMENT.curve_radius}
+                  onChange={(e) => updateAlignmentParams({ curve_radius: parseFloat(e.target.value) || 0 })}
+                  helperText="0: 직선교, 300~2000m: 곡선교"
+                />
+                <SSOTInput
+                  label="종단 경사 (Slope)"
+                  unit="%"
+                  type="number"
+                  min="-5"
+                  max="5"
+                  step="0.1"
+                  value={bridgeParams.alignment?.longitudinal_slope ?? DEFAULT_ALIGNMENT.longitudinal_slope}
+                  onChange={(e) => updateAlignmentParams({ longitudinal_slope: parseFloat(e.target.value) || 0 })}
+                  helperText="고속도로 표준 ±3.0% 이하"
+                />
+              </div>
+
+              <SSOTInput
+                label="시점 교대 계획고 (FG0)"
+                unit="m"
+                type="number"
+                min="10"
+                max="100"
+                step="0.5"
+                value={bridgeParams.alignment?.start_elevation ?? DEFAULT_ALIGNMENT.start_elevation}
+                onChange={(e) => updateAlignmentParams({ start_elevation: parseFloat(e.target.value) || 25 })}
+                helperText="시점 교대 상판 계획 표고"
+              />
+            </div>
+
+            {/* 지능형 자동 피팅 버튼 */}
+            <div className="p-3 bg-gradient-to-r from-indigo-900 to-slate-900 text-white rounded-lg space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold flex items-center gap-1.5 text-amber-300">
+                  <Sparkles className="w-4 h-4 text-amber-400" />
+                  지형 지반고 기반 교각·말뚝 자동 피팅
+                </span>
+                <button
+                  onClick={() => {
+                    autoFitPiersToTerrain();
+                    showFeedback('지형 지반고에 맞춰 모든 교각 높이와 말뚝 심도가 자동 피팅되었습니다.');
+                  }}
+                  className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold rounded-md text-xs shadow-sm transition-all flex items-center gap-1"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  자동 피팅 실행
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                현재 지형의 계곡 심도와 선형 계획고를 계산하여, 각 교각의 높이(H = FG - OG - 상부고)와 말뚝 길이를 1초 만에 자동 재산정합니다.
+              </p>
             </div>
           </div>
         )}
