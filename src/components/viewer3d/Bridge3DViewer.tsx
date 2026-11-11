@@ -39,6 +39,7 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
   const terrainGroupRef = useRef<THREE.Group | null>(null);
   const isDraggingRef = useRef(false);
   const previousMousePositionRef = useRef({ x: 0, y: 0 });
+  const lookAtTargetRef = useRef(new THREE.Vector3(100, 15, 0));
 
   const { bridgeParams, cameraPreset, setCameraPreset } = useBridgeStore();
   const [wireframe, setWireframe] = useState(false);
@@ -111,12 +112,12 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
 
     // Scene
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0F172A); // Slate 900
-    scene.fog = new THREE.FogExp2(0x0F172A, 0.0018);
+    scene.background = new THREE.Color(0x0B132B); // 맑고 깊은 딥 네이비 배경 (안개 없음)
+    // 🌟 안개(Fog) 완전 제거: 줌아웃 시 화면이 어두워지는 현상 근본 차단
     sceneRef.current = scene;
 
     // Camera
-    const camera = new THREE.PerspectiveCamera(45, width / height, 1, 3000);
+    const camera = new THREE.PerspectiveCamera(45, width / height, 1, 6000);
     camera.position.set(160, 65, 150);
     camera.lookAt(new THREE.Vector3(120, 15, 0));
     cameraRef.current = camera;
@@ -130,24 +131,31 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
     containerRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // Lights
-    const ambientLight = new THREE.AmbientLight(0xFFFFFF, 0.7);
+    // Lights - 줌아웃 시에도 어둡지 않고 항상 밝고 맑은 주광 환경 유지
+    const ambientLight = new THREE.AmbientLight(0xFFFFFF, 1.25);
     scene.add(ambientLight);
 
-    const dirLight = new THREE.DirectionalLight(0xFFFBEB, 1.3);
-    dirLight.position.set(200, 300, 150);
+    // 주 태양광
+    const dirLight = new THREE.DirectionalLight(0xFFFBEB, 1.4);
+    dirLight.position.set(300, 500, 250);
     dirLight.castShadow = true;
     dirLight.shadow.mapSize.width = 2048;
     dirLight.shadow.mapSize.height = 2048;
     dirLight.shadow.camera.near = 10;
-    dirLight.shadow.camera.far = 1000;
-    dirLight.shadow.camera.left = -300;
-    dirLight.shadow.camera.right = 300;
-    dirLight.shadow.camera.top = 300;
-    dirLight.shadow.camera.bottom = -300;
+    dirLight.shadow.camera.far = 2500;
+    dirLight.shadow.camera.left = -600;
+    dirLight.shadow.camera.right = 600;
+    dirLight.shadow.camera.top = 600;
+    dirLight.shadow.camera.bottom = -600;
     scene.add(dirLight);
 
-    const hemiLight = new THREE.HemisphereLight(0x93C5FD, 0x1E293B, 0.6);
+    // 반대편 보조광 (그늘진 역광 면도 밝고 선명하게 렌더링)
+    const dirLight2 = new THREE.DirectionalLight(0x93C5FD, 0.7);
+    dirLight2.position.set(-300, 400, -250);
+    scene.add(dirLight2);
+
+    const hemiLight = new THREE.HemisphereLight(0xE0F2FE, 0x1E293B, 0.75);
+    scene.add(hemiLight);
     scene.add(hemiLight);
 
     // Groups
@@ -172,7 +180,7 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
 
       if (e.buttons === 1) {
         // Orbit
-        const target = new THREE.Vector3(120, 15, 0);
+        const target = lookAtTargetRef.current;
         const offset = cameraRef.current.position.clone().sub(target);
         const radius = offset.length();
         let theta = Math.atan2(offset.x, offset.z) - deltaX * 0.006;
@@ -200,7 +208,7 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
       e.preventDefault();
       if (!cameraRef.current) return;
       const zoomFactor = e.deltaY * 0.15;
-      const target = new THREE.Vector3(120, 15, 0);
+      const target = lookAtTargetRef.current;
       const dir = cameraRef.current.position.clone().sub(target).normalize();
       cameraRef.current.position.addScaledVector(dir, zoomFactor);
     };
@@ -263,7 +271,8 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
     if (!cameraRef.current) return;
     const totalL = bridgeParams.bridge_length || 200;
     const centerX = totalL / 2;
-    const target = new THREE.Vector3(centerX, 15, 0);
+    lookAtTargetRef.current.set(centerX, 15, 0);
+    const target = lookAtTargetRef.current;
 
     const distScale = Math.max(1.0, totalL / 200);
     // 🌟 패널이 확장(12열)되었을 때 더 넓은 지형과 교량 전경이 시원하게 보이도록 카메라 시야 확장
@@ -314,11 +323,35 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
 
     const totalBridgeLen = bridge_length || spans.reduce((sum, s) => sum + s.span_length, 0);
 
-    const xMargin = 60;
+    // 🌟 지형 영역을 3배 이상 대폭 확장 (줌아웃 시에도 광활한 대한민국 국토 지형이 한눈에 조망됨)
+    const xMargin = Math.max(300, totalBridgeLen * 0.8);
     const xStart = -xMargin;
     const xEnd = totalBridgeLen + xMargin;
     const xSpan = xEnd - xStart;
-    const zSpan = 180; // 폭원 방향 지형 폭
+    const zSpan = Math.max(600, totalBridgeLen * 1.2); // 폭원 방향 지형 600m 이상 확장
+
+    // 🌟 도로 선형 중심선 좌표 및 탄젠트/경사각 함수 (평면선형 R 및 종단선형 g, FG0에 100% 종속)
+    const getAlignmentPoint = (x: number): { x: number; y: number; z: number; yaw: number; pitch: number } => {
+      const y = calculateFormationGround(x, alignment);
+      const pitch = -Math.atan((alignment.longitudinal_slope || 0) / 100);
+
+      let z = 0;
+      let yaw = 0;
+      const R = alignment.curve_radius;
+
+      if (R && R > 0) {
+        const halfL = totalBridgeLen / 2;
+        const dx = x - halfL;
+        if (R * R >= dx * dx) {
+          z = R - Math.sqrt(R * R - dx * dx);
+          yaw = Math.asin(dx / R);
+        }
+      }
+
+      return { x, y, z, yaw, pitch };
+    };
+
+    const skewRad = ((bridgeParams.skew_angle || 0) * Math.PI) / 180;
 
     // 🌟 SSOT 실측 지반고 함수: 지형 메쉬, 교대, 교각, 풋팅, 말뚝 기초가 100% 동일한 고도 체계를 공유
     const getActualGroundY = (x: number, z: number = 0): number => {
@@ -346,8 +379,8 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
     // 1. 지형 메쉬 (Terrain Mesh) 생성 (Step 1.2)
     // =========================================================================
     if (showTerrain) {
-      const xSegments = 80;
-      const zSegments = 30;
+      const xSegments = 100;
+      const zSegments = 50;
 
       const terrainGeo = new THREE.PlaneGeometry(xSpan, zSpan, xSegments, zSegments);
       terrainGeo.rotateX(-Math.PI / 2); // XZ 평면으로 눕힘
@@ -386,23 +419,14 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
       terrainMesh.receiveShadow = true;
       tGroup.add(terrainMesh);
 
-      // 도로 선형 가이드라인 (Road Alignment 3D Centerline - Step 2)
+      // 도로 선형 가이드라인 (Road Alignment 3D Centerline - 평면 R 및 종단 g 종속)
       if (showAlignment) {
         const alignPts: THREE.Vector3[] = [];
-        const steps = 60;
+        const steps = 80;
         for (let s = 0; s <= steps; s++) {
           const ax = (s / steps) * totalBridgeLen;
-          const ay = calculateFormationGround(ax, alignment) + 0.8; // 노면 살짝 상공
-          let az = 0;
-          if (alignment.curve_radius && alignment.curve_radius > 0) {
-            const halfLen = totalBridgeLen / 2;
-            const dx = ax - halfLen;
-            const R = alignment.curve_radius;
-            if (R * R >= dx * dx) {
-              az = R - Math.sqrt(R * R - dx * dx);
-            }
-          }
-          alignPts.push(new THREE.Vector3(ax, ay, az));
+          const pt = getAlignmentPoint(ax);
+          alignPts.push(new THREE.Vector3(pt.x, pt.y + 0.8, pt.z));
         }
         const alignGeo = new THREE.BufferGeometry().setFromPoints(alignPts);
         const alignMat = new THREE.LineDashedMaterial({
@@ -420,7 +444,7 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
       if (terrain.type === 'RIVER_CROSSING') {
         const centerGroundY = getActualGroundY(totalBridgeLen / 2, 0);
         const waterY = centerGroundY + (terrain.water_level || 3.0);
-        const waterWidth = (terrain.river_width || 120) + 10;
+        const waterWidth = Math.max(terrain.river_width || 120, totalBridgeLen * 0.7) + 50;
         const waterGeo = new THREE.PlaneGeometry(waterWidth, zSpan);
         waterGeo.rotateX(-Math.PI / 2);
         waterGeo.translate(totalBridgeLen / 2, waterY, 0);
@@ -430,7 +454,7 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
           roughness: 0.15,
           metalness: 0.2,
           transparent: true,
-          opacity: 0.72
+          opacity: 0.75
         });
         const waterMesh = new THREE.Mesh(waterGeo, waterMat);
         tGroup.add(waterMesh);
@@ -452,20 +476,24 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
     const pileMat = new THREE.MeshStandardMaterial({ color: 0x94A3B8, roughness: 0.4, metalness: 0.6, wireframe });
 
     let currentX = 0;
-    spans.forEach((span, idx) => {
+    spans.forEach((span) => {
       const spanLen = span.span_length;
       const spanGroup = new THREE.Group();
 
-      // 시작점 및 끝점 계획고
-      const fgStart = calculateFormationGround(currentX, alignment);
-      const fgEnd = calculateFormationGround(currentX + spanLen, alignment);
-      const avgDeckY = (fgStart + fgEnd) / 2;
+      // 경간 중심 선형 정보 산출
+      const midX = currentX + spanLen / 2;
+      const ptMid = getAlignmentPoint(midX);
+
+      // 🌟 경간 그룹 자체를 도로 선형 위치 및 회전각(Yaw/Pitch)에 종속
+      spanGroup.position.set(ptMid.x, ptMid.y, ptMid.z);
+      spanGroup.rotation.y = ptMid.yaw;
+      spanGroup.rotation.z = ptMid.pitch;
 
       // 1. Deck Slab & Pavement
       const slabThick = 0.45;
       const deckGeo = new THREE.BoxGeometry(spanLen - 0.2, slabThick, bridge_width);
       const deckMesh = new THREE.Mesh(deckGeo, concreteMat);
-      deckMesh.position.set(currentX + spanLen / 2, avgDeckY, 0);
+      deckMesh.position.set(0, 0, 0);
       deckMesh.castShadow = true;
       deckMesh.receiveShadow = true;
       spanGroup.add(deckMesh);
@@ -473,13 +501,13 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
       // Pavement
       const paveGeo = new THREE.BoxGeometry(spanLen - 0.2, 0.08, bridge_width - 1.2);
       const paveMesh = new THREE.Mesh(paveGeo, asphaltMat);
-      paveMesh.position.set(currentX + spanLen / 2, avgDeckY + slabThick / 2 + 0.04, 0);
+      paveMesh.position.set(0, slabThick / 2 + 0.04, 0);
       spanGroup.add(paveMesh);
 
       // Guardrails
       const railGeo = new THREE.BoxGeometry(spanLen - 0.2, 1.1, 0.4);
       const railLeft = new THREE.Mesh(railGeo, concreteMat);
-      railLeft.position.set(currentX + spanLen / 2, avgDeckY + slabThick / 2 + 0.55, bridge_width / 2 - 0.25);
+      railLeft.position.set(0, slabThick / 2 + 0.55, bridge_width / 2 - 0.25);
       const railRight = railLeft.clone();
       railRight.position.z = -bridge_width / 2 + 0.25;
       spanGroup.add(railLeft);
@@ -497,7 +525,7 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
           const bz = (b - (boxCount - 1) / 2) * boxSpacing;
           const girderGeo = new THREE.BoxGeometry(spanLen - 0.4, 2.4, 2.2);
           const girderMesh = new THREE.Mesh(girderGeo, steelBoxMat);
-          girderMesh.position.set(currentX + spanLen / 2, avgDeckY - slabThick / 2 - 1.2, bz);
+          girderMesh.position.set(0, -slabThick / 2 - 1.2, bz);
           girderMesh.castShadow = true;
           spanGroup.add(girderMesh);
         }
@@ -509,7 +537,7 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
           const gz = (g - (girderCount - 1) / 2) * gSpacing;
           const gGeo = new THREE.BoxGeometry(spanLen - 0.3, 2.0, 0.7);
           const gMesh = new THREE.Mesh(gGeo, concreteMat);
-          gMesh.position.set(currentX + spanLen / 2, avgDeckY - slabThick / 2 - 1.0, gz);
+          gMesh.position.set(0, -slabThick / 2 - 1.0, gz);
           gMesh.castShadow = true;
           spanGroup.add(gMesh);
         }
@@ -518,9 +546,9 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
       // 강아치교 특수 리브
       if (isArch) {
         const archCurveLeft = new THREE.QuadraticBezierCurve3(
-          new THREE.Vector3(currentX, avgDeckY, bridge_width / 2 - 1),
-          new THREE.Vector3(currentX + spanLen / 2, avgDeckY + 32, bridge_width / 2 - 1),
-          new THREE.Vector3(currentX + spanLen, avgDeckY, bridge_width / 2 - 1)
+          new THREE.Vector3(-spanLen / 2, 0, bridge_width / 2 - 1),
+          new THREE.Vector3(0, 32, bridge_width / 2 - 1),
+          new THREE.Vector3(spanLen / 2, 0, bridge_width / 2 - 1)
         );
         const tubeGeo = new THREE.TubeGeometry(archCurveLeft, 32, 0.9, 8, false);
         const archMesh = new THREE.Mesh(tubeGeo, steelBoxMat);
@@ -532,29 +560,55 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
     });
 
     // =========================================================================
-    // 3. 교대 (A1 & A2) 빌드 (실측 지반고 OG에 100% 밀착 안착)
+    // 3. 교대 (A1 & A2) 빌드 (🌟 평면 곡선, 사각, 종단계획고 및 실측 지반고 종속)
     // =========================================================================
     const createAbutment = (xPos: number, isStart: boolean) => {
       const abutGroup = new THREE.Group();
-      const fg = calculateFormationGround(xPos, alignment);
-      // 🌟 실측 지반고 통일 함수 호출 (0mm 오차 없는 지표면 밀착)
-      const og = getActualGroundY(xPos, 0);
+      const pt = getAlignmentPoint(xPos);
+      const fg = pt.y;
+      const og = getActualGroundY(pt.x, pt.z);
 
       const abutHeight = Math.max(5, fg - og);
+
+      // 교대 위치 및 회전 (평면 곡선 yaw + 교량 사각 skewRad 종속!)
+      abutGroup.position.set(pt.x, 0, pt.z);
+      abutGroup.rotation.y = pt.yaw + skewRad;
 
       // Backwall & Stem
       const stemGeo = new THREE.BoxGeometry(4.0, abutHeight, bridge_width + 2);
       const stemMesh = new THREE.Mesh(stemGeo, concreteMat);
-      stemMesh.position.set(xPos, og + abutHeight / 2, 0);
+      stemMesh.position.set(isStart ? -2 : 2, og + abutHeight / 2, 0);
       stemMesh.castShadow = true;
       abutGroup.add(stemMesh);
 
       // Footing (지표면 OG에 딱 안착)
       const footingGeo = new THREE.BoxGeometry(8.0, 2.0, bridge_width + 4);
       const footingMesh = new THREE.Mesh(footingGeo, concreteMat);
-      footingMesh.position.set(xPos + (isStart ? -2 : 2), og + 1.0, 0);
+      footingMesh.position.set(isStart ? -2 : 2, og + 1.0, 0);
       footingMesh.castShadow = true;
       abutGroup.add(footingMesh);
+
+      // A1/A2 강관말뚝 기초 (사각 및 평면곡선 종속)
+      const abutmentItem = isStart ? abutments[0] : abutments[1];
+      if (showPiles && abutmentItem?.foundation === 'PILE') {
+        const pLen = abutmentItem.pile_len || 16;
+        const pCount = Math.min(36, abutmentItem.pile_count || 40);
+        const cols = 3;
+        const rows = Math.ceil(pCount / cols);
+        const colSpacing = 2.0;
+        const rowSpacing = Math.min(3.2, (bridge_width * 0.75) / Math.max(1, rows - 1));
+        const pileGeo = new THREE.CylinderGeometry(0.254, 0.254, pLen, 12);
+
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const pz = (r - (rows - 1) / 2) * rowSpacing;
+            const px = (isStart ? -2 : 2) + (c - (cols - 1) / 2) * colSpacing;
+            const pileMesh = new THREE.Mesh(pileGeo, pileMat);
+            pileMesh.position.set(px, og - pLen / 2, pz);
+            abutGroup.add(pileMesh);
+          }
+        }
+      }
 
       bGroup.add(abutGroup);
     };
@@ -563,7 +617,7 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
     createAbutment(totalBridgeLen, false);
 
     // =========================================================================
-    // 4. 교각 (P1, P2...) 빌드 (실측 지반고 OG에 100% 밀착 안착)
+    // 4. 교각 (P1, P2...) 빌드 (🌟 평면 곡선, 사각, 종단계획고 및 실측 지반고 종속)
     // =========================================================================
     let spanCumX = 0;
     piers.forEach((pier, idx) => {
@@ -574,9 +628,9 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
       }
 
       const pierGroup = new THREE.Group();
-      const fg = calculateFormationGround(spanCumX, alignment);
-      // 🌟 실측 지반고 통일 함수 호출 (허공 뜸 방지)
-      const og = getActualGroundY(spanCumX, 0);
+      const pt = getAlignmentPoint(spanCumX);
+      const fg = pt.y;
+      const og = getActualGroundY(pt.x, pt.z);
 
       // 상부고(거더/받침 2.5m) 차감한 교각 상단 표고
       const topPierY = fg - 2.5;
@@ -584,18 +638,22 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
       const columnHeight = Math.max(3.0, topPierY - footingTopY);
       const diam = pier.diameter || 2.8;
 
+      // 교각 위치 및 회전 (평면 곡선 yaw + 교량 사각 skewRad 종속!)
+      pierGroup.position.set(pt.x, 0, pt.z);
+      pierGroup.rotation.y = pt.yaw + skewRad;
+
       // 1. Coping (T-Head)
       const copingGeo = new THREE.BoxGeometry(4.5, 2.2, bridge_width - 1.0);
       const copingMesh = new THREE.Mesh(copingGeo, pierMat);
-      copingMesh.position.set(spanCumX, topPierY - 1.1, 0);
+      copingMesh.position.set(0, topPierY - 1.1, 0);
       copingMesh.castShadow = true;
       pierGroup.add(copingMesh);
 
-      // 2. Pier Column (지반선 풋팅 상단부터 코핑 바닥까지 정확한 연장)
+      // 2. Pier Column (기둥)
       if (bridge_width >= 24) {
         const colGeo = new THREE.CylinderGeometry(diam / 2, diam / 2, columnHeight, 24);
         const col1 = new THREE.Mesh(colGeo, pierMat);
-        col1.position.set(spanCumX, footingTopY + columnHeight / 2, bridge_width / 4);
+        col1.position.set(0, footingTopY + columnHeight / 2, bridge_width / 4);
         col1.castShadow = true;
         const col2 = col1.clone();
         col2.position.z = -bridge_width / 4;
@@ -604,7 +662,7 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
       } else {
         const colGeo = new THREE.CylinderGeometry(diam / 2, diam / 2, columnHeight, 24);
         const colMesh = new THREE.Mesh(colGeo, pierMat);
-        colMesh.position.set(spanCumX, footingTopY + columnHeight / 2, 0);
+        colMesh.position.set(0, footingTopY + columnHeight / 2, 0);
         colMesh.castShadow = true;
         pierGroup.add(colMesh);
       }
@@ -612,92 +670,33 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
       // 3. Footing (두께 2m 푸팅 바닥이 지표면 OG에 정확히 안착)
       const footingGeo = new THREE.BoxGeometry(diam * 2.6, 2.0, bridge_width * 0.85);
       const footingMesh = new THREE.Mesh(footingGeo, concreteMat);
-      footingMesh.position.set(spanCumX, og + 1.0, 0);
+      footingMesh.position.set(0, og + 1.0, 0);
       footingMesh.castShadow = true;
       pierGroup.add(footingMesh);
 
+      // 4. 강관말뚝 기초 (교각 회전 및 사각에 정확히 종속)
+      if (showPiles && pier.foundation === 'PILE') {
+        const pLen = pier.pile_len || 16;
+        const pCount = Math.min(36, pier.pile_count || 50);
+        const cols = 3;
+        const rows = Math.ceil(pCount / cols);
+        const colSpacing = 2.0;
+        const rowSpacing = Math.min(3.2, (bridge_width * 0.75) / Math.max(1, rows - 1));
+        const pileGeo = new THREE.CylinderGeometry(0.254, 0.254, pLen, 12);
+
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const pz = (r - (rows - 1) / 2) * rowSpacing;
+            const px = (c - (cols - 1) / 2) * colSpacing;
+            const pileMesh = new THREE.Mesh(pileGeo, pileMat);
+            pileMesh.position.set(px, og - pLen / 2, pz);
+            pierGroup.add(pileMesh);
+          }
+        }
+      }
+
       bGroup.add(pierGroup);
     });
-
-    // =========================================================================
-    // 5. 강관말뚝 기초 (지표면 OG에서 암반 지지층까지 관입)
-    // =========================================================================
-    if (showPiles) {
-      const pileRadius = 0.254; // D508 / 2 = 0.254m
-      const pileGroups: { x: number; baseY: number; len: number; count: number }[] = [];
-
-      // A1 교대 말뚝 (실측 지반고에서 하향 관입)
-      if (abutments[0]?.foundation === 'PILE') {
-        const og0 = getActualGroundY(0, 0);
-        pileGroups.push({
-          x: 0,
-          baseY: og0,
-          len: abutments[0].pile_len || 15,
-          count: Math.min(36, abutments[0].pile_count || 40)
-        });
-      }
-
-      // 교각 말뚝 (실측 지반고에서 하향 관입)
-      let pCumX = 0;
-      piers.forEach((p, pIdx) => {
-        if (pIdx < spans.length - 1) {
-          pCumX += spans[pIdx].span_length;
-        } else {
-          pCumX = (totalBridgeLen / (piers.length + 1)) * (pIdx + 1);
-        }
-        if (p.foundation === 'PILE') {
-          const ogP = getActualGroundY(pCumX, 0);
-          pileGroups.push({
-            x: pCumX,
-            baseY: ogP,
-            len: p.pile_len || 15,
-            count: Math.min(36, p.pile_count || 50)
-          });
-        }
-      });
-
-      // A2 교대 말뚝 (실측 지반고에서 하향 관입)
-      if (abutments[1]?.foundation === 'PILE') {
-        const ogEnd = getActualGroundY(totalBridgeLen, 0);
-        pileGroups.push({
-          x: totalBridgeLen,
-          baseY: ogEnd,
-          len: abutments[1].pile_len || 15,
-          count: Math.min(36, abutments[1].pile_count || 40)
-        });
-      }
-
-      const totalInstances = pileGroups.reduce((sum, g) => sum + g.count, 0);
-
-      if (totalInstances > 0) {
-        const unitPileGeo = new THREE.CylinderGeometry(pileRadius, pileRadius, 1, 12);
-        const instancedPiles = new THREE.InstancedMesh(unitPileGeo, pileMat, totalInstances);
-        const dummy = new THREE.Object3D();
-        let pileIdx = 0;
-
-        pileGroups.forEach((g) => {
-          const cols = 3;
-          const rows = Math.ceil(g.count / cols);
-          const colSpacing = 2.2;
-          const rowSpacing = Math.min(3.5, (bridge_width * 0.7) / Math.max(1, rows - 1));
-
-          for (let r = 0; r < rows; r++) {
-            for (let c = 0; c < cols; c++) {
-              if (pileIdx >= totalInstances) break;
-              const zPos = (r - (rows - 1) / 2) * rowSpacing;
-              const xPos = g.x + (c - (cols - 1) / 2) * colSpacing;
-              dummy.position.set(xPos, g.baseY - g.len / 2, zPos);
-              dummy.scale.set(1, g.len, 1);
-              dummy.updateMatrix();
-              instancedPiles.setMatrixAt(pileIdx++, dummy.matrix);
-            }
-          }
-        });
-
-        instancedPiles.instanceMatrix.needsUpdate = true;
-        bGroup.add(instancedPiles);
-      }
-    }
   }, [bridgeParams, showPiles, showTerrain, showAlignment, wireframe, realTerrain]);
 
   return (
