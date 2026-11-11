@@ -176,7 +176,11 @@ export const App: React.FC = () => {
       </section>
 
       {/* 3. Main Workspace Area */}
-      <main className="max-w-7xl mx-auto px-4 py-5 flex-1 w-full">
+      <main
+        className={`${
+          isPanelCollapsed && selectedViewMode === '3D' ? 'max-w-full px-6' : 'max-w-7xl px-4'
+        } mx-auto py-5 flex-1 w-full transition-all duration-300`}
+      >
         {selectedViewMode === '3D' && (
           <div className="space-y-4">
             {/* 🌟 지형·선형 우선 워크플로우 안내 및 패널 최소화/확장 컨트롤 바 */}

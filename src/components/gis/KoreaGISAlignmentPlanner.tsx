@@ -76,10 +76,24 @@ export const KoreaGISAlignmentPlanner: React.FC<KoreaGISAlignmentPlannerProps> =
   const [interactMode, setInteractMode] = useState<'PAN' | 'DRAW'>('PAN');
 
   // 4. 계획 노선 좌표 (WGS84 절대 위경도 좌표로 저장하여 패닝/줌 시에도 지도에 고정)
-  const [alignmentLatLngs, setAlignmentLatLngs] = useState<AlignmentLatLngPoint[]>([
-    { lat: 36.3845, lng: 127.4230 }, // A1
-    { lat: 36.3860, lng: 127.4255 }  // A2
-  ]);
+  const [alignmentLatLngs, setAlignmentLatLngs] = useState<AlignmentLatLngPoint[]>(() => {
+    if (bridgeParams.alignmentEndpoints) {
+      return [
+        { lat: bridgeParams.alignmentEndpoints.startLat, lng: bridgeParams.alignmentEndpoints.startLng },
+        { lat: bridgeParams.alignmentEndpoints.endLat, lng: bridgeParams.alignmentEndpoints.endLng }
+      ];
+    }
+    if (bridgeParams.coordinates?.lat && bridgeParams.coordinates?.lng) {
+      return [
+        { lat: bridgeParams.coordinates.lat - 0.0007, lng: bridgeParams.coordinates.lng - 0.0012 },
+        { lat: bridgeParams.coordinates.lat + 0.0007, lng: bridgeParams.coordinates.lng + 0.0012 }
+      ];
+    }
+    return [
+      { lat: 36.3845, lng: 127.4230 }, // A1
+      { lat: 36.3860, lng: 127.4255 }  // A2
+    ];
+  });
 
   // 5. 드래그 패닝 상태
   const isDraggingRef = useRef(false);
@@ -227,8 +241,8 @@ export const KoreaGISAlignmentPlanner: React.FC<KoreaGISAlignmentPlannerProps> =
     const baseTileX = Math.floor(centerTileX);
     const baseTileY = Math.floor(centerTileY);
 
-    // 캔버스 중심에 타일 격자 렌더링 (주변 -2 ~ +2 범위의 실제 위성 타일 로드)
-    const range = 2;
+    // 캔버스 중심에 타일 격자 렌더링 (주변 -3 ~ +3 범위의 실제 위성 타일 로드)
+    const range = 3;
     for (let dx = -range; dx <= range; dx++) {
       for (let dy = -range; dy <= range; dy++) {
         const tx = baseTileX + dx;
@@ -515,15 +529,27 @@ export const KoreaGISAlignmentPlanner: React.FC<KoreaGISAlignmentPlannerProps> =
       }
     ];
 
+    // 노선 시점(A1)과 종점(A2)의 정확한 중점 및 방위각 계산
+    const p1 = alignmentLatLngs.length >= 2 ? alignmentLatLngs[0] : { lat: mapCenter.lat, lng: mapCenter.lng - 0.0012 };
+    const p2 = alignmentLatLngs.length >= 2 ? alignmentLatLngs[alignmentLatLngs.length - 1] : { lat: mapCenter.lat, lng: mapCenter.lng + 0.0012 };
+    const midLat = (p1.lat + p2.lat) / 2;
+    const midLng = (p1.lng + p2.lng) / 2;
+
     const planName = `${locationName} 계획안 (${totalLen}m)`;
 
     const updated = {
       ...bridgeParams,
       name: planName,
       locationName,
-      coordinates: { lat: mapCenter.lat, lng: mapCenter.lng },
+      coordinates: { lat: midLat, lng: midLng },
+      alignmentEndpoints: {
+        startLat: p1.lat,
+        startLng: p1.lng,
+        endLat: p2.lat,
+        endLng: p2.lng,
+        azimuthDeg
+      },
       bridge_length: totalLen,
-      skew_angle: skewAngleDeg,
       spans: newSpans,
       piers: newPiers,
       abutments: newAbutments,

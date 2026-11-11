@@ -74,7 +74,10 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
       }
     }
 
-    loadRealWorldTerrain(targetLat, targetLng, 15, 80, 30)
+    const bridgeLen = bridgeParams.bridge_length || 240;
+    const azimuthDeg = bridgeParams.alignmentEndpoints?.azimuthDeg ?? 90;
+
+    loadRealWorldTerrain(targetLat, targetLng, bridgeLen, azimuthDeg, 100, 60)
       .then((data) => {
         if (!isCancelled) {
           setRealTerrain(data);
@@ -92,6 +95,9 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
   }, [
     bridgeParams.coordinates?.lat,
     bridgeParams.coordinates?.lng,
+    bridgeParams.alignmentEndpoints?.azimuthDeg,
+    bridgeParams.alignmentEndpoints?.startLat,
+    bridgeParams.alignmentEndpoints?.endLat,
     bridgeParams.locationName,
     bridgeParams.name,
     bridgeParams.bridge_length
@@ -124,7 +130,10 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
 
     // Renderer
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
-    renderer.setSize(width, height);
+    renderer.setSize(width, height, false);
+    renderer.domElement.style.width = '100%';
+    renderer.domElement.style.height = '100%';
+    renderer.domElement.style.display = 'block';
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -295,6 +304,18 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
     cameraRef.current.lookAt(target);
   }, [cameraPreset, bridgeParams.bridge_length, isExpanded]);
 
+  // 사이드 패널 토글(확장/축소) 및 CSS 트랜지션 완료 시점마다 WebGL 캔버스 해상도·비율 동기화
+  useEffect(() => {
+    const triggerResize = () => window.dispatchEvent(new Event('resize'));
+    triggerResize();
+    const t1 = window.setTimeout(triggerResize, 120);
+    const t2 = window.setTimeout(triggerResize, 330);
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
+  }, [isExpanded]);
+
   // 3. 🌟 지형(Terrain Mesh) 및 교량 구조물 동적 3D 파라메트릭 빌드
   useEffect(() => {
     if (!bridgeGroupRef.current || !terrainGroupRef.current) return;
@@ -323,12 +344,10 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
 
     const totalBridgeLen = bridge_length || spans.reduce((sum, s) => sum + s.span_length, 0);
 
-    // 🌟 지형 영역을 3배 이상 대폭 확장 (줌아웃 시에도 광활한 대한민국 국토 지형이 한눈에 조망됨)
-    const xMargin = Math.max(300, totalBridgeLen * 0.8);
-    const xStart = -xMargin;
-    const xEnd = totalBridgeLen + xMargin;
-    const xSpan = xEnd - xStart;
-    const zSpan = Math.max(600, totalBridgeLen * 1.2); // 폭원 방향 지형 600m 이상 확장
+    // 🌟 지형 메쉬 크기와 정사영상 캔버스의 실측 미터 크기를 1:1 완전 일치 (교량 중심 = 위성 중심)
+    const xSpan = realTerrain ? realTerrain.widthMeters : Math.max(700, totalBridgeLen * 2.4);
+    const zSpan = realTerrain ? realTerrain.depthMeters : Math.round(xSpan * 0.72);
+    const xStart = totalBridgeLen / 2 - xSpan / 2;
 
     // 🌟 도로 선형 중심선 좌표 및 탄젠트/경사각 함수 (평면선형 R 및 종단선형 g, FG0에 100% 종속)
     const getAlignmentPoint = (x: number): { x: number; y: number; z: number; yaw: number; pitch: number } => {
@@ -380,7 +399,7 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
     // =========================================================================
     if (showTerrain) {
       const xSegments = 100;
-      const zSegments = 50;
+      const zSegments = 60;
 
       const terrainGeo = new THREE.PlaneGeometry(xSpan, zSpan, xSegments, zSegments);
       terrainGeo.rotateX(-Math.PI / 2); // XZ 평면으로 눕힘
@@ -407,6 +426,7 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
       }
       terrainTexture.wrapS = THREE.ClampToEdgeWrapping;
       terrainTexture.wrapT = THREE.ClampToEdgeWrapping;
+      terrainTexture.anisotropy = 8;
 
       // 지형 재질 (실제 위성사진 매핑)
       const terrainMat = new THREE.MeshStandardMaterial({
@@ -439,26 +459,7 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
         alignLine.computeLineDistances();
         bGroup.add(alignLine);
       }
-
-      // 하천 수면 메쉬 (River Water Plane)
-      if (terrain.type === 'RIVER_CROSSING') {
-        const centerGroundY = getActualGroundY(totalBridgeLen / 2, 0);
-        const waterY = centerGroundY + (terrain.water_level || 3.0);
-        const waterWidth = Math.max(terrain.river_width || 120, totalBridgeLen * 0.7) + 50;
-        const waterGeo = new THREE.PlaneGeometry(waterWidth, zSpan);
-        waterGeo.rotateX(-Math.PI / 2);
-        waterGeo.translate(totalBridgeLen / 2, waterY, 0);
-
-        const waterMat = new THREE.MeshStandardMaterial({
-          color: 0x0284C7, // 청록빛 하천 수면
-          roughness: 0.15,
-          metalness: 0.2,
-          transparent: true,
-          opacity: 0.75
-        });
-        const waterMesh = new THREE.Mesh(waterGeo, waterMat);
-        tGroup.add(waterMesh);
-      }
+      // 🌟 가짜 파란 수면 레이어(waterMesh) 완전 제거: 실제 위성 정사영상 위의 강물을 그대로 선명하게 노출!
     } else {
       // 심플 모드 바닥 그리드
       const grid = new THREE.GridHelper(600, 60, 0x475569, 0x1E293B);
@@ -702,11 +703,11 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
   return (
     <div
       className={`relative w-full ${
-        isExpanded ? 'h-[740px]' : 'h-[640px]'
+        isExpanded ? 'h-[76vh] min-h-[700px]' : 'h-[640px]'
       } rounded-xl overflow-hidden border border-slate-200 bg-slate-900 shadow-inner flex flex-col transition-all duration-300`}
     >
       {/* 3D Canvas Container */}
-      <div ref={containerRef} className="w-full flex-1 cursor-grab active:cursor-grabbing" />
+      <div ref={containerRef} className="w-full h-full flex-1 min-w-0 min-h-0 overflow-hidden relative cursor-grab active:cursor-grabbing" />
 
       {/* Control Bar Overlay (Left Top) */}
       <div className="absolute top-3 left-3 flex items-center gap-2 bg-slate-900/85 backdrop-blur-md px-3 py-1.5 rounded-lg border border-slate-700 text-xs text-white shadow-lg">

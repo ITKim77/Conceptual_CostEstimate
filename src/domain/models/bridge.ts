@@ -106,7 +106,14 @@ export interface BridgeParameters {
   apply_fsm_adjustment: boolean; // [Red]
   terrain?: TerrainParameters; // [Red] 지형 파라미터
   alignment?: AlignmentParameters; // [Red] 선형 파라미터
-  coordinates?: { lat: number; lng: number }; // [Red] 실측 국토 위경도 좌표
+  coordinates?: { lat: number; lng: number }; // [Red] 실측 국토 위경도 좌표 (교량 중심)
+  alignmentEndpoints?: {
+    startLat: number;
+    startLng: number;
+    endLat: number;
+    endLng: number;
+    azimuthDeg: number; // 정북=0, 동=90 기준 방위각
+  };
   locationName?: string; // [Red] 국토 지명/주소
   description?: string;
 }
