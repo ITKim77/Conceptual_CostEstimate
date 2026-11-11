@@ -43,6 +43,8 @@ interface BridgeStoreState {
   loadAlternative: (id: string) => void;
   deleteAlternative: (id: string) => void;
   loadBenchmarkPreset: (benchmarkId: string) => void;
+  loadAllBenchmarks: () => void;
+  resetToInitialState: () => void;
 
   // UI 상태 액션
   setViewMode: (mode: '3D' | 'TABLE' | 'ANALYTICS' | 'BENCHMARK') => void;
@@ -50,32 +52,58 @@ interface BridgeStoreState {
   setActiveTab: (tab: 'basic' | 'spans' | 'substructure' | 'piles') => void;
 }
 
-const initialBenchmark = PRESET_BENCHMARKS[0];
-const initialParams: BridgeParameters = JSON.parse(JSON.stringify(initialBenchmark.bridgeParams));
-const initialBreakdown = calculateBridgeCost(initialParams);
+export const DEFAULT_CLEAN_BRIDGE: BridgeParameters = {
+  id: 'alt_base',
+  name: '신규 교량 계획 프로젝트 (원안)',
+  bridge_length: 120,
+  bridge_width: 24,
+  skew_angle: 0,
+  spans: [
+    { id: 's1', span_index: 1, span_length: 40, type: 'PSC_BEAM', foundation: 'PILE' },
+    { id: 's2', span_index: 2, span_length: 40, type: 'PSC_BEAM', foundation: 'PILE' },
+    { id: 's3', span_index: 3, span_length: 40, type: 'PSC_BEAM', foundation: 'PILE' }
+  ],
+  abutments: [
+    { id: 'a1', name: 'A1', height: 9, foundation: 'PILE', pile_len: 15, pile_count: 40 },
+    { id: 'a2', name: 'A2', height: 9, foundation: 'PILE', pile_len: 15, pile_count: 40 }
+  ],
+  piers: [
+    { id: 'p1', name: 'P1', height: 16, diameter: 2.5, type: 'T_PIER', foundation: 'PILE', pile_len: 15, pile_count: 50 },
+    { id: 'p2', name: 'P2', height: 16, diameter: 2.5, type: 'T_PIER', foundation: 'PILE', pile_len: 15, pile_count: 50 }
+  ],
+  pile_method: 'SDA',
+  markup_rate: 0.40,
+  steel_price_ton: 715000,
+  apply_mss_adjustment: false,
+  apply_fsm_adjustment: false,
+  description: '신규 교량 기본 계획안 (40m × 3경간 PSC BEAM, B=24m 왕복 4차로 표준)'
+};
 
-const initialAlternatives: AlternativeScenario[] = PRESET_BENCHMARKS.map((bm, idx) => {
-  const params = JSON.parse(JSON.stringify(bm.bridgeParams));
-  const breakdown = calculateBridgeCost(params);
-  const colors = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899'];
-  return {
-    id: bm.id,
-    name: bm.name,
-    bridgeParams: params,
-    costBreakdown: breakdown,
-    color: colors[idx % colors.length],
-    isBase: idx === 0
+export function createDefaultCleanState() {
+  const baseParams: BridgeParameters = JSON.parse(JSON.stringify(DEFAULT_CLEAN_BRIDGE));
+  const baseBreakdown = calculateBridgeCost(baseParams);
+  const baseAlt: AlternativeScenario = {
+    id: 'alt_base',
+    name: '원안 (기본 계획안)',
+    bridgeParams: baseParams,
+    costBreakdown: baseBreakdown,
+    color: '#3B82F6',
+    isBase: true
   };
-});
+
+  return {
+    bridgeParams: baseParams,
+    activeAlternativeId: 'alt_base',
+    alternatives: [baseAlt],
+    costBreakdown: baseBreakdown,
+    selectedViewMode: '3D' as const,
+    cameraPreset: 'iso' as const,
+    activeTab: 'basic' as const
+  };
+}
 
 export const useBridgeStore = create<BridgeStoreState>((set, get) => ({
-  bridgeParams: initialParams,
-  activeAlternativeId: initialBenchmark.id,
-  alternatives: initialAlternatives,
-  costBreakdown: initialBreakdown,
-  selectedViewMode: '3D',
-  cameraPreset: 'iso',
-  activeTab: 'basic',
+  ...createDefaultCleanState(),
 
   updateBridgeParams: (partial) => {
     set((state) => {
@@ -270,11 +298,56 @@ export const useBridgeStore = create<BridgeStoreState>((set, get) => ({
     const bm = PRESET_BENCHMARKS.find((b) => b.id === benchmarkId);
     if (!bm) return;
     const paramsCopy = JSON.parse(JSON.stringify(bm.bridgeParams));
-    set({
-      bridgeParams: paramsCopy,
-      activeAlternativeId: bm.id,
-      costBreakdown: calculateBridgeCost(paramsCopy)
+    const breakdown = calculateBridgeCost(paramsCopy);
+    
+    set((state) => {
+      // 대안 목록에 이미 없으면 추가
+      const exists = state.alternatives.some((a) => a.id === bm.id);
+      let newAlts = state.alternatives;
+      if (!exists) {
+        newAlts = [
+          ...state.alternatives,
+          {
+            id: bm.id,
+            name: bm.name,
+            bridgeParams: paramsCopy,
+            costBreakdown: breakdown,
+            color: '#10B981'
+          }
+        ];
+      }
+      return {
+        bridgeParams: paramsCopy,
+        activeAlternativeId: bm.id,
+        alternatives: newAlts,
+        costBreakdown: breakdown
+      };
     });
+  },
+
+  loadAllBenchmarks: () => {
+    const colors = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6'];
+    const benchmarkAlts: AlternativeScenario[] = PRESET_BENCHMARKS.map((bm, idx) => {
+      const params = JSON.parse(JSON.stringify(bm.bridgeParams));
+      return {
+        id: bm.id,
+        name: bm.name,
+        bridgeParams: params,
+        costBreakdown: calculateBridgeCost(params),
+        color: colors[idx % colors.length],
+        isBase: idx === 0
+      };
+    });
+    set({
+      alternatives: benchmarkAlts,
+      activeAlternativeId: benchmarkAlts[0].id,
+      bridgeParams: JSON.parse(JSON.stringify(benchmarkAlts[0].bridgeParams)),
+      costBreakdown: calculateBridgeCost(benchmarkAlts[0].bridgeParams)
+    });
+  },
+
+  resetToInitialState: () => {
+    set(createDefaultCleanState());
   },
 
   setViewMode: (mode) => set({ selectedViewMode: mode }),

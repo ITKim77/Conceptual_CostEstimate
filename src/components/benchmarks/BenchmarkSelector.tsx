@@ -5,11 +5,11 @@ import { PRESET_BENCHMARKS } from '../../domain/constants/rev04_database';
 import { Award, CheckCircle2, ArrowRight, BookOpen } from 'lucide-react';
 
 export const BenchmarkSelector: React.FC = () => {
-  const { loadBenchmarkPreset, activeAlternativeId, costBreakdown } = useBridgeStore();
+  const { loadBenchmarkPreset, loadAllBenchmarks, activeAlternativeId, costBreakdown } = useBridgeStore();
 
   return (
     <div className="space-y-5">
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
             <Award className="w-5 h-5 text-amber-500" />
@@ -19,9 +19,15 @@ export const BenchmarkSelector: React.FC = () => {
             `docs/고속도로 계획단계 교량 개략공사비 산정.md` 6장의 실제 타당성조사 및 기본설계 비교안 데이터를 100% 정합성으로 로드합니다.
           </p>
         </div>
-        <div className="flex items-center gap-1.5 text-xs font-bold text-amber-700 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200">
-          <BookOpen className="w-4 h-4 text-amber-600" />
-          실적 레퍼런스 100% 정합 검증
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => loadAllBenchmarks()}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold transition-all shadow-xs"
+            title="실적 벤치마크 4개 비교안을 일괄 등록하여 대안 비교 탭에서 즉시 분석"
+          >
+            <BookOpen className="w-4 h-4" />
+            벤치마크 전체 세트 로드
+          </button>
         </div>
       </div>
 

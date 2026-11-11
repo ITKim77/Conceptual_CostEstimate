@@ -1,5 +1,5 @@
 // src/App.tsx
-import React from 'react';
+import React, { useState } from 'react';
 import { useBridgeStore } from './store/useBridgeStore';
 import { Bridge3DViewer } from './components/viewer3d/Bridge3DViewer';
 import { ParametricInputPanel } from './components/input/ParametricInputPanel';
@@ -14,7 +14,9 @@ import {
   Award,
   Layers,
   Sparkles,
-  GitBranch
+  GitBranch,
+  RotateCcw,
+  AlertTriangle
 } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -25,8 +27,11 @@ export const App: React.FC = () => {
     setViewMode,
     alternatives,
     activeAlternativeId,
-    loadAlternative
+    loadAlternative,
+    resetToInitialState
   } = useBridgeStore();
+
+  const [showResetModal, setShowResetModal] = useState(false);
 
   const totalCostBillion = (costBreakdown.total_construction_cost / 100000000).toFixed(2);
   const directCostBillion = (costBreakdown.direct_cost_total / 100000000).toFixed(2);
@@ -57,21 +62,33 @@ export const App: React.FC = () => {
             </div>
           </div>
 
-          {/* Alternative Quick Switcher */}
-          <div className="hidden md:flex items-center gap-2 bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-lg text-xs">
-            <GitBranch className="w-4 h-4 text-slate-500" />
-            <span className="font-semibold text-slate-600">활성 대안:</span>
-            <select
-              value={activeAlternativeId}
-              onChange={(e) => loadAlternative(e.target.value)}
-              className="bg-transparent font-bold text-indigo-700 focus:outline-none cursor-pointer"
+          {/* Alternative Quick Switcher & Project Reset Button */}
+          <div className="hidden md:flex items-center gap-2">
+            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-lg text-xs">
+              <GitBranch className="w-4 h-4 text-slate-500" />
+              <span className="font-semibold text-slate-600">활성 대안:</span>
+              <select
+                value={activeAlternativeId}
+                onChange={(e) => loadAlternative(e.target.value)}
+                className="bg-transparent font-bold text-indigo-700 focus:outline-none cursor-pointer max-w-[180px] truncate"
+              >
+                {alternatives.map((alt) => (
+                  <option key={alt.id} value={alt.id}>
+                    {alt.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Reset Button */}
+            <button
+              onClick={() => setShowResetModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-red-50 hover:border-red-300 text-slate-700 hover:text-red-600 text-xs font-bold transition-all shadow-xs"
+              title="프로젝트 초기화 및 기본 상태로 복귀"
             >
-              {alternatives.map((alt) => (
-                <option key={alt.id} value={alt.id}>
-                  {alt.name}
-                </option>
-              ))}
-            </select>
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>초기화</span>
+            </button>
           </div>
 
           {/* Mode Switcher Tabs */}
@@ -88,7 +105,7 @@ export const App: React.FC = () => {
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${selectedViewMode === 'ANALYTICS' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
             >
               <TrendingUp className="w-4 h-4" />
-              <span>대안 비교</span>
+              <span>대안 비교 ({alternatives.length})</span>
             </button>
             <button
               onClick={() => setViewMode('TABLE')}
@@ -226,6 +243,44 @@ export const App: React.FC = () => {
           </div>
         </div>
       </footer>
+      {/* 5. Reset Project Confirmation Modal */}
+      {showResetModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-xl max-w-md w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95">
+            <div className="flex items-center gap-3 text-red-600 mb-2">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900">프로젝트 초기화</h3>
+                <p className="text-xs text-slate-500">기본 설정으로 되돌립니다</p>
+              </div>
+            </div>
+            <p className="text-xs text-slate-600 mt-3 leading-relaxed">
+              현재 편집 중인 교량 제원 및 모든 등록된 비교안이 삭제되고, <strong className="text-slate-900 font-bold">신규 프로젝트 기본 상태(원안 1개)</strong>로 초기화됩니다. 계속 진행하시겠습니까?
+            </p>
+            <div className="flex items-center justify-end gap-2 mt-5">
+              <button
+                type="button"
+                onClick={() => setShowResetModal(false)}
+                className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  resetToInitialState();
+                  setShowResetModal(false);
+                }}
+                className="px-4 py-1.5 rounded-lg text-xs font-bold text-white bg-red-600 hover:bg-red-700 shadow-sm"
+              >
+                초기화 실행
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
