@@ -28,4 +28,8 @@
 
 * **2026-11-10 (D-01 ~ D-04)**: 거버넌스 및 하네스 설계, 병렬 엔진, GitHub 공개 배포 완료
 * **2026-11-11 (D-05)**: React 18 + Vite + TypeScript + Tailwind CSS + Three.js 기반 웹 애플리케이션 풀 구현 및 프로덕션 빌드(`npm run build`) 무결성 100% 검증 완료.
+* **2026-11-11 (D-06)**: 사용자 피드백 반영:
+  - **원안 포함 전면 초기화 체계 구축**: 앱 초기 구동 시 등록된 대안이 없는 클린 상태로 시작하며, 런타임 중에도 상단 [초기화] 버튼을 통해 원안을 포함한 전면 초기화 지원.
+  - **3D BIM 모델러 기반 대안 추가 현황 및 결정 UI**: 3D 뷰어 상단에 `AlternativeStatusBar`를 통합하여 프로젝트명 입력, 등록된 대안 배지 목록, 현재 제원을 "원안으로 등록(확정)"하거나 "비교안으로 추가"할 수 있는 대안 결정 패널 구현.
+  - **GitHub Pages CI/CD 파이프라인 최적화 및 라이브 배포 완료**: GitHub Actions build & deploy 2-job 분리 구성으로 안정적 배포 완료 (`https://itkim77.github.io/Conceptual_CostEstimate/`).
 
