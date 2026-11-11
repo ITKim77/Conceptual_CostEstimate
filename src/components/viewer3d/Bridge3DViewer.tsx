@@ -396,49 +396,77 @@ export const Bridge3DViewer: React.FC = () => {
       group.add(pierGroup);
     });
 
-    // D. 강관말뚝 기초 (InstancedMesh 빌드)
+    // D. 강관말뚝 기초 (InstancedMesh 빌드 - 사용자 입력 말뚝 길이 및 본수 실시간 연동)
     if (showPiles) {
       const pileRadius = 0.254; // D508 / 2 = 0.254m
-      const pileLen = 15;
-      const pileCountPerPier = 20;
-      const totalPiles = (piers.length + 2) * pileCountPerPier;
+      const pileGroups: { x: number; len: number; count: number }[] = [];
 
-      const pileCylinderGeo = new THREE.CylinderGeometry(pileRadius, pileRadius, pileLen, 12);
-      const instancedPiles = new THREE.InstancedMesh(pileCylinderGeo, pileMat, totalPiles);
+      // A1 교대
+      if (abutments[0]?.foundation === 'PILE') {
+        pileGroups.push({
+          x: 0,
+          len: abutments[0].pile_len || 15,
+          count: Math.min(48, abutments[0].pile_count || 40)
+        });
+      }
 
-      const dummy = new THREE.Object3D();
-      let pileIdx = 0;
-
-      // 교대 말뚝
-      [0, totalBridgeLen].forEach((xPos) => {
-        for (let r = -2; r <= 2; r++) {
-          for (let c = -1; c <= 2; c++) {
-            dummy.position.set(xPos + c * 2, -pileLen / 2, r * 4);
-            dummy.updateMatrix();
-            instancedPiles.setMatrixAt(pileIdx++, dummy.matrix);
-          }
-        }
-      });
-
-      // 교각 말뚝
+      // 교각들
       let pCumX = 0;
-      piers.forEach((_, pIdx) => {
+      piers.forEach((p, pIdx) => {
         if (pIdx < spans.length - 1) {
           pCumX += spans[pIdx].span_length;
         } else {
           pCumX = (totalBridgeLen / (piers.length + 1)) * (pIdx + 1);
         }
-        for (let r = -2; r <= 2; r++) {
-          for (let c = -1; c <= 2; c++) {
-            dummy.position.set(pCumX + c * 2.2, -pileLen / 2, r * 3.5);
-            dummy.updateMatrix();
-            instancedPiles.setMatrixAt(pileIdx++, dummy.matrix);
-          }
+        if (p.foundation === 'PILE') {
+          pileGroups.push({
+            x: pCumX,
+            len: p.pile_len || 15,
+            count: Math.min(48, p.pile_count || 50)
+          });
         }
       });
 
-      instancedPiles.instanceMatrix.needsUpdate = true;
-      group.add(instancedPiles);
+      // A2 교대
+      if (abutments[1]?.foundation === 'PILE') {
+        pileGroups.push({
+          x: totalBridgeLen,
+          len: abutments[1].pile_len || 15,
+          count: Math.min(48, abutments[1].pile_count || 40)
+        });
+      }
+
+      const totalInstances = pileGroups.reduce((sum, g) => sum + g.count, 0);
+
+      if (totalInstances > 0) {
+        const unitPileGeo = new THREE.CylinderGeometry(pileRadius, pileRadius, 1, 12);
+        const instancedPiles = new THREE.InstancedMesh(unitPileGeo, pileMat, totalInstances);
+
+        const dummy = new THREE.Object3D();
+        let pileIdx = 0;
+
+        pileGroups.forEach((g) => {
+          const cols = Math.min(4, Math.max(2, Math.round(Math.sqrt(g.count / 3))));
+          const rows = Math.ceil(g.count / cols);
+          const colSpacing = 2.0;
+          const rowSpacing = Math.min(3.5, (bridge_width * 0.75) / Math.max(1, rows - 1));
+
+          for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+              if (pileIdx >= totalInstances) break;
+              const zPos = (r - (rows - 1) / 2) * rowSpacing;
+              const xPos = g.x + (c - (cols - 1) / 2) * colSpacing;
+              dummy.position.set(xPos, -g.len / 2, zPos);
+              dummy.scale.set(1, g.len, 1);
+              dummy.updateMatrix();
+              instancedPiles.setMatrixAt(pileIdx++, dummy.matrix);
+            }
+          }
+        });
+
+        instancedPiles.instanceMatrix.needsUpdate = true;
+        group.add(instancedPiles);
+      }
     }
   }, [bridgeParams, showPiles, wireframe]);
 

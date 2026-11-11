@@ -39,6 +39,13 @@ interface BridgeStoreState {
   removePier: (index: number) => void;
   updateAbutment: (index: number, abut: Partial<AbutmentItem>) => void;
   setPileMethod: (method: PileMethod) => void;
+  applyBatchPileParams: (params: {
+    abutPileLen?: number;
+    abutPileCount?: number;
+    pierPileLen?: number;
+    pierPileCount?: number;
+    foundationType?: 'DIRECT' | 'PILE' | 'MASS_CONCRETE';
+  }) => void;
 
   // 대안 관리 액션 (원안 및 비교안 등록/추가)
   registerCurrentAsAlternative: (name?: string) => void;
@@ -240,6 +247,35 @@ export const useBridgeStore = create<BridgeStoreState>((set, get) => ({
   setPileMethod: (method) => {
     set((state) => {
       const newParams = { ...state.bridgeParams, pile_method: method };
+      return {
+        bridgeParams: newParams,
+        costBreakdown: calculateBridgeCost(newParams)
+      };
+    });
+  },
+
+  applyBatchPileParams: ({ abutPileLen, abutPileCount, pierPileLen, pierPileCount, foundationType }) => {
+    set((state) => {
+      const newAbuts = state.bridgeParams.abutments.map((a) => ({
+        ...a,
+        foundation: foundationType !== undefined ? foundationType : a.foundation,
+        pile_len: abutPileLen !== undefined ? abutPileLen : a.pile_len,
+        pile_count: abutPileCount !== undefined ? abutPileCount : a.pile_count
+      }));
+
+      const newPiers = state.bridgeParams.piers.map((p) => ({
+        ...p,
+        foundation: foundationType !== undefined ? foundationType : p.foundation,
+        pile_len: pierPileLen !== undefined ? pierPileLen : p.pile_len,
+        pile_count: pierPileCount !== undefined ? pierPileCount : p.pile_count
+      }));
+
+      const newParams = {
+        ...state.bridgeParams,
+        abutments: newAbuts,
+        piers: newPiers
+      };
+
       return {
         bridgeParams: newParams,
         costBreakdown: calculateBridgeCost(newParams)

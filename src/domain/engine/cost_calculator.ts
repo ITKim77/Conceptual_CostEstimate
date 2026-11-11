@@ -182,24 +182,37 @@ export function calculateBridgeCost(params: BridgeParameters): CostBreakdown {
 
   const substructureTotal = abutmentCost + pierCost;
 
-  // 4. 기초공 (강관말뚝 D508) 산출
+  // 4. 기초공 (강관말뚝 D508 및 매스콘크리트) 산출
   const pileRateInfo = PILE_UNIT_PRICES[params.pile_method] || PILE_UNIT_PRICES.SDA;
   const pileUnitPrice = pileRateInfo.unitRate;
   let totalPileLength = 0;
+  let massConcreteVolume = 0;
 
   params.abutments.forEach(abut => {
     if (abut.foundation === 'PILE') {
-      totalPileLength += (abut.pile_len || 15) * (abut.pile_count || 40);
+      const len = abut.pile_len !== undefined ? abut.pile_len : 15;
+      const count = abut.pile_count !== undefined ? abut.pile_count : 40;
+      totalPileLength += len * count;
+    } else if (abut.foundation === 'MASS_CONCRETE') {
+      // 교대 배면 및 저면 심도보강 매스콘크리트 (폭원 * 두께 3m * 깊이 4m)
+      massConcreteVolume += effectiveAbutmentWidth * 3 * 4;
     }
   });
 
   params.piers.forEach(pier => {
     if (pier.foundation === 'PILE') {
-      totalPileLength += (pier.pile_len || 15) * (pier.pile_count || 50);
+      const len = pier.pile_len !== undefined ? pier.pile_len : 15;
+      const count = pier.pile_count !== undefined ? pier.pile_count : 50;
+      totalPileLength += len * count;
+    } else if (pier.foundation === 'MASS_CONCRETE') {
+      // 교각 직접기초 심도보강 매스콘크리트 (기당 약 80m3)
+      massConcreteVolume += 80;
     }
   });
 
-  const foundationCost = Math.round(totalPileLength * pileUnitPrice);
+  const pileCost = Math.round(totalPileLength * pileUnitPrice);
+  const massCost = Math.round(massConcreteVolume * REV04_CONSTANTS.MASS_CONCRETE_M3);
+  const foundationCost = pileCost + massCost;
 
   // 5. 가시설 및 부대공/토공
   const tempFacilityCost = params.piers.length * REV04_CONSTANTS.TEMP_FACILITY_PER_PIER;
