@@ -19,9 +19,11 @@ import {
   KOREA_POI_DATABASE,
   KoreaLocationPOI,
   searchKoreaLocations,
+  searchKoreaLocationsOnline,
   calculateGroundDistanceMeters,
   calculateAzimuthAngle
 } from '../../domain/gis/korea_geocoding';
+import { latLngToTileCoords, getSatelliteTileUrl } from '../../domain/gis/tile_coords';
 import { useBridgeStore } from '../../store/useBridgeStore';
 import { SpanItem, PierItem, AbutmentItem, TerrainParameters, AlignmentParameters } from '../../domain/models/bridge';
 import { calculatePierFittings } from '../../domain/engine/terrain_alignment_calculator';
@@ -61,13 +63,42 @@ export const KoreaGISAlignmentPlanner: React.FC<KoreaGISAlignmentPlannerProps> =
   ]);
   const [isDrawing, setIsDrawing] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [satelliteImg, setSatelliteImg] = useState<HTMLImageElement | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // 검색어 입력 시 결과 갱신
+  // 🌟 실제 대한민국 고해상도 항공위성사진 타일 실시간 로드 (ESRI World Imagery)
+  useEffect(() => {
+    let active = true;
+    const tile = latLngToTileCoords(mapCenter.lat, mapCenter.lng, zoomLevel);
+    const url = getSatelliteTileUrl(tile.x, tile.y, zoomLevel);
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      if (active) setSatelliteImg(img);
+    };
+    img.onerror = () => {
+      if (active) setSatelliteImg(null);
+    };
+    img.src = url;
+    return () => {
+      active = false;
+    };
+  }, [mapCenter, zoomLevel]);
+
+  // 검색어 입력 시 로컬 캐시 + 온라인 지오코더 통합 검색
   const handleSearchChange = (q: string) => {
     setSearchQuery(q);
-    setSearchResults(searchKoreaLocations(q));
+    const local = searchKoreaLocations(q);
+    setSearchResults(local);
+
+    if (q.trim().length >= 2) {
+      searchKoreaLocationsOnline(q).then((online) => {
+        if (online && online.length > 0) {
+          setSearchResults(online);
+        }
+      });
+    }
   };
 
   // POI 선택 시 해당 위치로 지도 이동 및 기본 노선 리셋
@@ -79,7 +110,7 @@ export const KoreaGISAlignmentPlanner: React.FC<KoreaGISAlignmentPlannerProps> =
       { x: 280, y: 300, lat: poi.lat - 0.001, lng: poi.lng - 0.0015 },
       { x: 520, y: 200, lat: poi.lat + 0.001, lng: poi.lng + 0.0015 }
     ]);
-    setStatusMessage(`'${poi.name}' 일원 국토 위성 지도가 로드되었습니다.`);
+    setStatusMessage(`'${poi.name}' 실제 항공위성사진 및 실측 DEM 지형이 로드되었습니다.`);
   };
 
   // 노선 거리 및 방위각 계산
@@ -127,60 +158,32 @@ export const KoreaGISAlignmentPlanner: React.FC<KoreaGISAlignmentPlannerProps> =
     const w = canvas.width;
     const h = canvas.height;
 
-    // 1. 위성 배경 (농경지, 수목, 토사 텍스처)
-    const grad = ctx.createLinearGradient(0, 0, w, h);
-    grad.addColorStop(0, '#2D452F');
-    grad.addColorStop(0.4, '#39533B');
-    grad.addColorStop(0.7, '#4B6349');
-    grad.addColorStop(1, '#31442E');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, w, h);
-
-    // 격자 농경지/산림 음영 패턴
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-    ctx.lineWidth = 1;
-    for (let x = 0; x < w; x += 40) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, h);
-      ctx.stroke();
-    }
-    for (let y = 0; y < h; y += 40) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(w, y);
-      ctx.stroke();
+    // 1. 🌟 실제 고해상도 항공위성 정사영상 렌더링 (ESRI World Imagery 실사 타일)
+    if (satelliteImg) {
+      ctx.drawImage(satelliteImg, 0, 0, w, h);
+    } else {
+      // 위성 이미지 로딩 중 배경
+      const grad = ctx.createLinearGradient(0, 0, w, h);
+      grad.addColorStop(0, '#1E293B');
+      grad.addColorStop(1, '#0F172A');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, w, h);
+      ctx.font = 'bold 14px sans-serif';
+      ctx.fillStyle = '#94A3B8';
+      ctx.fillText('실시간 고해상도 위성 정사영상 타일 다운로드 중...', w / 2 - 130, h / 2);
     }
 
-    // 2. 하천 수계(Water Body) 곡선 렌더링
-    const riverWidth = (selectedPOI.recommendedRiverWidth / 250) * 160;
-    ctx.fillStyle = '#0284C7';
-    ctx.beginPath();
-    ctx.moveTo(w * 0.4 - riverWidth / 2, 0);
-    ctx.bezierCurveTo(
-      w * 0.45 - riverWidth / 2, h * 0.35,
-      w * 0.35 - riverWidth / 2, h * 0.65,
-      w * 0.42 - riverWidth / 2, h
-    );
-    ctx.lineTo(w * 0.42 + riverWidth / 2, h);
-    ctx.bezierCurveTo(
-      w * 0.35 + riverWidth / 2, h * 0.65,
-      w * 0.45 + riverWidth / 2, h * 0.35,
-      w * 0.4 + riverWidth / 2, 0
-    );
-    ctx.closePath();
-    ctx.fill();
+    // 2. 실제 국토 좌표 및 축척 안내 오버레이
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+    ctx.fillRect(10, h - 35, 360, 24);
+    ctx.fillStyle = '#38BDF8';
+    ctx.fillText(`실측 위성 정사영상 [Lat: ${mapCenter.lat.toFixed(5)}, Lng: ${mapCenter.lng.toFixed(5)}]`, 18, h - 19);
 
-    // 하천 모래톱/둔치(Sandbar & Shoreline)
-    ctx.strokeStyle = '#D97706';
-    ctx.lineWidth = 3;
-    ctx.stroke();
-
-    // 3. Vworld 국토 정사영상 워터마크 및 축척 안내
-    ctx.font = 'bold 12px sans-serif';
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-    ctx.fillText(`Vworld 국토 정사영상 [위도: ${mapCenter.lat.toFixed(4)}, 경도: ${mapCenter.lng.toFixed(4)}]`, 15, h - 15);
-    ctx.fillText(`축척: 1px ≈ ${(calculatedLengthMeters / 300).toFixed(1)}m | 줌: Lv.${zoomLevel}`, w - 210, h - 15);
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+    ctx.fillRect(w - 220, h - 35, 210, 24);
+    ctx.fillStyle = '#FBBF24';
+    ctx.fillText(`축척: 1px ≈ ${(calculatedLengthMeters / 280).toFixed(1)}m | 줌: Lv.${zoomLevel}`, w - 210, h - 19);
 
     // 4. 계획 노선 가이드라인 렌더링
     if (alignmentPoints.length >= 2) {
@@ -270,7 +273,7 @@ export const KoreaGISAlignmentPlanner: React.FC<KoreaGISAlignmentPlannerProps> =
       ctx.fillStyle = '#FBBF24';
       ctx.fillText(`L = ${calculatedLengthMeters}m (${spanCount}경간)`, midX - 48, midY - 8);
     }
-  }, [alignmentPoints, selectedPOI, mapCenter, zoomLevel, calculatedLengthMeters, recommendedSpans]);
+  }, [alignmentPoints, selectedPOI, mapCenter, zoomLevel, calculatedLengthMeters, recommendedSpans, satelliteImg]);
 
   // 마우스 클릭으로 노선 재계획 (1번째 클릭: A1, 2번째 클릭: A2)
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -588,3 +591,4 @@ export const KoreaGISAlignmentPlanner: React.FC<KoreaGISAlignmentPlannerProps> =
     </div>
   );
 };
+

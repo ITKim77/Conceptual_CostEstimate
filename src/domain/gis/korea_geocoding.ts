@@ -178,7 +178,7 @@ export const KOREA_POI_DATABASE: KoreaLocationPOI[] = [
 ];
 
 /**
- * 주소/키워드 지오코딩 검색 함수
+ * 주소/키워드 로컬 캐시 지오코딩 검색 함수
  */
 export function searchKoreaLocations(query: string): KoreaLocationPOI[] {
   if (!query || query.trim().length === 0) {
@@ -192,6 +192,49 @@ export function searchKoreaLocations(query: string): KoreaLocationPOI[] {
       poi.description.toLowerCase().includes(clean)
   );
 }
+
+/**
+ * 대한민국 전역 온라인 지오코딩 실시간 질의 (Nominatim Korea Engine)
+ * 로컬 캐시 DB에 없는 대한민국 어떤 주소/지명이라도 실시간으로 위경도를 찾아냄
+ */
+export async function searchKoreaLocationsOnline(query: string): Promise<KoreaLocationPOI[]> {
+  const localResults = searchKoreaLocations(query);
+  if (localResults.length > 0) {
+    return localResults;
+  }
+
+  try {
+    const clean = encodeURIComponent(query.trim());
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${clean}&countrycodes=kr&format=json&limit=5`);
+    if (!res.ok) return localResults;
+    const items = await res.json();
+    if (!Array.isArray(items) || items.length === 0) return localResults;
+
+    const onlinePOIs: KoreaLocationPOI[] = items.map((item: any, idx: number) => {
+      const lat = parseFloat(item.lat);
+      const lng = parseFloat(item.lon);
+      return {
+        name: item.display_name?.split(',')[0] || query,
+        region: item.display_name || '대한민국',
+        lat,
+        lng,
+        category: 'RIVER',
+        terrainType: 'RIVER_CROSSING',
+        recommendedValleyDepth: 18,
+        recommendedRiverWidth: 200,
+        bearingStratumDepth: 16,
+        defaultBridgeLength: 300,
+        description: `실측 검색 좌표 (위도: ${lat.toFixed(4)}, 경도: ${lng.toFixed(4)})`
+      };
+    });
+
+    return onlinePOIs;
+  } catch (e) {
+    console.warn('온라인 지오코딩 조회 실패:', e);
+    return localResults;
+  }
+}
+
 
 /**
  * 위도, 경도 좌표 간의 실제 거리(미터) 계산 (Haversine Formula)
@@ -233,3 +276,4 @@ export function calculateAzimuthAngle(
   const bearing = (Math.atan2(y, x) * 180) / Math.PI;
   return Math.round((bearing + 360) % 360);
 }
+

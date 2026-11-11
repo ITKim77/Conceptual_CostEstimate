@@ -23,6 +23,8 @@ import {
   KOREA_LOCATION_PRESETS
 } from '../../domain/constants/korea_terrain_presets';
 import { KoreaGISAlignmentPlanner } from '../gis/KoreaGISAlignmentPlanner';
+import { loadRealWorldTerrain, RealWorldTerrainData } from '../../domain/gis/terrain_dem_loader';
+import { KOREA_POI_DATABASE } from '../../domain/gis/korea_geocoding';
 
 export const Bridge3DViewer: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -41,6 +43,41 @@ export const Bridge3DViewer: React.FC = () => {
   const [showAlignment, setShowAlignment] = useState(true);
   const [showDimensions, setShowDimensions] = useState(true);
   const [isGISPlannerOpen, setIsGISPlannerOpen] = useState(false);
+  const [realTerrain, setRealTerrain] = useState<RealWorldTerrainData | null>(null);
+  const [isLoadingTerrain, setIsLoadingTerrain] = useState(false);
+
+  // 실제 위성 정사영상 타일 및 DEM 래스터 실시간 로드 (대한민국 전역 실측 데이터)
+  useEffect(() => {
+    let isCancelled = false;
+    setIsLoadingTerrain(true);
+
+    // 현재 대안의 지명에서 위경도 찾기 (매칭 실패 시 대전 갑천 기본 좌표)
+    let targetLat = 36.3852;
+    let targetLng = 127.4241;
+    const foundPOI = KOREA_POI_DATABASE.find((p) =>
+      bridgeParams.name?.includes(p.name.split(' ')[0])
+    );
+    if (foundPOI) {
+      targetLat = foundPOI.lat;
+      targetLng = foundPOI.lng;
+    }
+
+    loadRealWorldTerrain(targetLat, targetLng, 15, 80, 30)
+      .then((data) => {
+        if (!isCancelled) {
+          setRealTerrain(data);
+          setIsLoadingTerrain(false);
+        }
+      })
+      .catch((err) => {
+        console.warn('실측 위성/DEM 로드 실패:', err);
+        if (!isCancelled) setIsLoadingTerrain(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [bridgeParams.name]);
 
   // 1. Scene & Renderer Initialization
   useEffect(() => {
@@ -258,37 +295,48 @@ export const Bridge3DViewer: React.FC = () => {
         const vx = posAttr.getX(i);
         const vz = posAttr.getZ(i);
 
-        // 중심선 상의 지반고
-        const { groundElevation, isWater, waterSurfaceElevation } = calculateOriginalGround(
-          vx,
-          totalBridgeLen,
-          terrain,
-          alignment
-        );
-
-        // 횡단 방향(Z축) 완만한 자연 구릉 경사 가미 (산악 계곡감 연출)
-        const zDist = Math.abs(vz);
-        const sideSlope = (zDist / (zSpan / 2)) * 3.5;
-        const vy = groundElevation + sideSlope;
+        let vy = 15;
+        if (realTerrain && realTerrain.elevationGrid.length > 0) {
+          // 🌟 실측 DEM (수치표고모델) 그리드에서 실제 해발고도 매핑
+          const normX = Math.max(0, Math.min(1, (vx - xStart) / xSpan));
+          const normZ = Math.max(0, Math.min(1, (vz + zSpan / 2) / zSpan));
+          const gridZ = Math.min(realTerrain.elevationGrid.length - 1, Math.floor(normZ * (realTerrain.elevationGrid.length - 1)));
+          const gridX = Math.min(realTerrain.elevationGrid[0].length - 1, Math.floor(normX * (realTerrain.elevationGrid[0].length - 1)));
+          const rawElev = realTerrain.elevationGrid[gridZ][gridX];
+          // 중심 표고 기준 상대 고도 스케일링 (시점 계획고 부근 정규화)
+          vy = rawElev - realTerrain.centerElevation + 15;
+        } else {
+          // 중심선 상의 지반고
+          const { groundElevation } = calculateOriginalGround(
+            vx,
+            totalBridgeLen,
+            terrain,
+            alignment
+          );
+          const zDist = Math.abs(vz);
+          const sideSlope = (zDist / (zSpan / 2)) * 3.5;
+          vy = groundElevation + sideSlope;
+        }
 
         posAttr.setY(i, vy);
-
-        if (isWater && waterSurfaceElevation !== null) {
-          minWaterY = Math.min(minWaterY, waterSurfaceElevation);
-        }
       }
 
       terrainGeo.computeVertexNormals();
 
-      // 대한민국 위성 정사영상 캔버스 텍스처 생성 및 적용 (Step 1.2)
-      const orthoCanvas = generateKoreaAerialOrthophotoCanvas(terrain.type, 1024, 512);
-      const orthoTexture = new THREE.CanvasTexture(orthoCanvas);
-      orthoTexture.wrapS = THREE.ClampToEdgeWrapping;
-      orthoTexture.wrapT = THREE.ClampToEdgeWrapping;
+      // 🌟 실제 고해상도 항공위성 정사영상 텍스처 적용 (ESRI World Imagery 실사 타일)
+      let terrainTexture: THREE.Texture;
+      if (realTerrain && realTerrain.satelliteCanvas) {
+        terrainTexture = new THREE.CanvasTexture(realTerrain.satelliteCanvas);
+      } else {
+        const orthoCanvas = generateKoreaAerialOrthophotoCanvas(terrain.type, 1024, 512);
+        terrainTexture = new THREE.CanvasTexture(orthoCanvas);
+      }
+      terrainTexture.wrapS = THREE.ClampToEdgeWrapping;
+      terrainTexture.wrapT = THREE.ClampToEdgeWrapping;
 
-      // 지형 재질 (정사영상 텍스처 매핑)
+      // 지형 재질 (실제 위성사진 매핑)
       const terrainMat = new THREE.MeshStandardMaterial({
-        map: orthoTexture,
+        map: terrainTexture,
         roughness: 0.85,
         metalness: 0.05,
         wireframe
@@ -605,7 +653,7 @@ export const Bridge3DViewer: React.FC = () => {
         bGroup.add(instancedPiles);
       }
     }
-  }, [bridgeParams, showPiles, showTerrain, showAlignment, wireframe]);
+  }, [bridgeParams, showPiles, showTerrain, showAlignment, wireframe, realTerrain]);
 
   return (
     <div className="relative w-full h-[520px] rounded-xl overflow-hidden border border-slate-200 bg-slate-900 shadow-inner flex flex-col">
@@ -622,10 +670,20 @@ export const Bridge3DViewer: React.FC = () => {
         <span className="font-mono text-slate-200">L={bridgeParams.bridge_length}m</span>
         <span className="font-mono text-slate-200">B={bridgeParams.bridge_width}m</span>
         <span className="text-slate-400">({bridgeParams.spans.length}경간)</span>
-        {bridgeParams.terrain && (
+        {isLoadingTerrain ? (
+          <span className="text-[10px] bg-sky-950 text-sky-300 px-1.5 py-0.5 rounded border border-sky-600/50 animate-pulse font-mono flex items-center gap-1">
+            <Mountain className="w-3 h-3 text-sky-400" />
+            실측 위성 타일·DEM 로드 중...
+          </span>
+        ) : realTerrain ? (
+          <span className="text-[10px] bg-emerald-950 text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-600/50 font-mono flex items-center gap-1">
+            <Mountain className="w-3 h-3 text-emerald-400" />
+            실측 DEM ({Math.round(realTerrain.minElevation)}~{Math.round(realTerrain.maxElevation)}m) & 항공위성사진 매핑
+          </span>
+        ) : bridgeParams.terrain && (
           <span className="text-[10px] bg-indigo-900/70 text-indigo-200 px-1.5 py-0.5 rounded border border-indigo-700/50 flex items-center gap-1">
             <Mountain className="w-3 h-3 text-indigo-400" />
-            {bridgeParams.terrain.type === 'RIVER_CROSSING' ? '하천횡단 (정사영상)' : bridgeParams.terrain.type === 'VALLEY' ? '협곡지형 (DEM)' : '평지교차'}
+            {bridgeParams.terrain.type === 'RIVER_CROSSING' ? '하천횡단' : '산악협곡'}
           </span>
         )}
         {bridgeParams.alignment && (
