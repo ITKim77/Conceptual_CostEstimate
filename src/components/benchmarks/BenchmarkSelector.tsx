@@ -96,3 +96,4 @@ export const BenchmarkSelector: React.FC = () => {
     </div>
   );
 };
+

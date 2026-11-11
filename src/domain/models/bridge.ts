@@ -141,3 +141,4 @@ export interface AlternativeScenario {
   color: string;
   isBase?: boolean;
 }
+

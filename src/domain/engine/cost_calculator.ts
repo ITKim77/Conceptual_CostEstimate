@@ -237,3 +237,4 @@ export function calculateBridgeCost(params: BridgeParameters): CostBreakdown {
     total_deck_area_m2: Math.round(totalDeckArea * 10) / 10
   };
 }
+

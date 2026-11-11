@@ -326,3 +326,4 @@ export const CostReportTable: React.FC = () => {
     </div>
   );
 };
+
