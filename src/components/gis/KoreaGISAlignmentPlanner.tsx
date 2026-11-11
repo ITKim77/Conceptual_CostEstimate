@@ -575,14 +575,27 @@ export const KoreaGISAlignmentPlanner: React.FC<KoreaGISAlignmentPlannerProps> =
           </div>
         </div>
 
-        {onClose && (
+        <div className="flex items-center gap-2">
+          {/* 🌟 상단 3D 뷰어에 반영하고 창 닫기 버튼 */}
           <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all"
+            onClick={handleConfirmAndProceed}
+            className="px-3.5 py-1.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black rounded-lg text-xs shadow-md flex items-center gap-1.5 transition-all hover:scale-102 active:scale-98"
+            title="현재 계획된 노선 및 지형 제원을 3D BIM 뷰어에 반영하고 창을 닫습니다"
           >
-            <X className="w-5 h-5" />
+            <CheckCircle2 className="w-4 h-4 text-slate-950" />
+            <span>3D 뷰어에 반영하고 창 닫기</span>
           </button>
-        )}
+
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all"
+              title="창 닫기 (반영 취소)"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* 2. Top Tool Bar: Search & Mode Controls */}
@@ -737,13 +750,14 @@ export const KoreaGISAlignmentPlanner: React.FC<KoreaGISAlignmentPlannerProps> =
             </div>
           </div>
 
-          {/* 최종 확정 및 3D BIM 모델러 진행 버튼 */}
+          {/* 🌟 3D BIM 모델러 반영 및 창 닫기 버튼 */}
           <button
             onClick={handleConfirmAndProceed}
             className="py-2.5 px-5 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-black rounded-lg text-xs shadow-xl flex items-center gap-2 transition-all hover:scale-102 active:scale-98"
+            title="현재 계획된 교량 제원을 3D BIM 뷰어에 반영하고 창을 닫습니다"
           >
-            <Sparkles className="w-4 h-4" />
-            <span>지형·선형 확정 및 3D BIM 모델러로 진행</span>
+            <CheckCircle2 className="w-4 h-4" />
+            <span>3D 뷰어에 반영하고 창 닫기 (L={calculatedLengthMeters}m)</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>

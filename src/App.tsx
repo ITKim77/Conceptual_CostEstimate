@@ -225,7 +225,7 @@ export const App: React.FC = () => {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
               {/* Left Viewport: 3D BIM Viewer & Viewport Controls (패널 최소화 시 12열 전체 차지) */}
               <div className={`${isPanelCollapsed ? 'lg:col-span-12' : 'lg:col-span-7'} flex flex-col gap-4 transition-all duration-300`}>
-                <Bridge3DViewer />
+                <Bridge3DViewer isExpanded={isPanelCollapsed} />
 
                 {/* Sub-breakdown Cards */}
                 <div className="grid grid-cols-3 gap-3">

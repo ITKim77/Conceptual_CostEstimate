@@ -26,7 +26,11 @@ import { KoreaGISAlignmentPlanner } from '../gis/KoreaGISAlignmentPlanner';
 import { loadRealWorldTerrain, RealWorldTerrainData } from '../../domain/gis/terrain_dem_loader';
 import { KOREA_POI_DATABASE } from '../../domain/gis/korea_geocoding';
 
-export const Bridge3DViewer: React.FC = () => {
+export interface Bridge3DViewerProps {
+  isExpanded?: boolean;
+}
+
+export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = false }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -208,16 +212,26 @@ export const Bridge3DViewer: React.FC = () => {
     dom.addEventListener('wheel', onWheel, { passive: false });
     dom.addEventListener('contextmenu', (e) => e.preventDefault());
 
-    // Resize Observer
+    // 🌟 Resize Observer: 브라우저 윈도우뿐만 아니라 사이드 패널 토글 시 캔버스 컨테이너의 실시간 크기 변화를 100% 포착
     const handleResize = () => {
       if (!containerRef.current || !rendererRef.current || !cameraRef.current) return;
       const w = containerRef.current.clientWidth;
       const h = containerRef.current.clientHeight || 520;
+      if (w === 0 || h === 0) return;
       cameraRef.current.aspect = w / h;
       cameraRef.current.updateProjectionMatrix();
-      rendererRef.current.setSize(w, h);
+      rendererRef.current.setSize(w, h, false);
+      rendererRef.current.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     };
+
     window.addEventListener('resize', handleResize);
+
+    const resizeObserver = new ResizeObserver(() => {
+      handleResize();
+    });
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
 
     // Render Loop
     let animId: number;
@@ -236,6 +250,7 @@ export const Bridge3DViewer: React.FC = () => {
       window.removeEventListener('mouseup', onMouseUp);
       dom.removeEventListener('wheel', onWheel);
       window.removeEventListener('resize', handleResize);
+      resizeObserver.disconnect();
       if (rendererRef.current && rendererRef.current.domElement) {
         dom.removeChild(rendererRef.current.domElement);
         rendererRef.current.dispose();
@@ -243,7 +258,7 @@ export const Bridge3DViewer: React.FC = () => {
     };
   }, []);
 
-  // 2. Camera Preset Controls (교량 총연장에 맞춘 동적 시점 포커싱)
+  // 2. Camera Preset Controls (교량 총연장 및 패널 확장 모드에 맞춘 동적 시점 포커싱)
   useEffect(() => {
     if (!cameraRef.current) return;
     const totalL = bridgeParams.bridge_length || 200;
@@ -251,23 +266,25 @@ export const Bridge3DViewer: React.FC = () => {
     const target = new THREE.Vector3(centerX, 15, 0);
 
     const distScale = Math.max(1.0, totalL / 200);
+    // 🌟 패널이 확장(12열)되었을 때 더 넓은 지형과 교량 전경이 시원하게 보이도록 카메라 시야 확장
+    const expandFactor = isExpanded ? 1.25 : 1.0;
 
     switch (cameraPreset) {
       case 'iso':
-        cameraRef.current.position.set(centerX + 60 * distScale, 65 * distScale, 150 * distScale);
+        cameraRef.current.position.set(centerX + 60 * distScale * expandFactor, 65 * distScale * expandFactor, 150 * distScale * expandFactor);
         break;
       case 'elevation':
-        cameraRef.current.position.set(centerX, 25 * distScale, 200 * distScale);
+        cameraRef.current.position.set(centerX, 25 * distScale * expandFactor, 200 * distScale * expandFactor);
         break;
       case 'cross':
-        cameraRef.current.position.set(-60 * distScale, 30 * distScale, 0);
+        cameraRef.current.position.set(-60 * distScale * expandFactor, 30 * distScale * expandFactor, 0);
         break;
       case 'plan':
-        cameraRef.current.position.set(centerX, 240 * distScale, 0.1);
+        cameraRef.current.position.set(centerX, 240 * distScale * expandFactor, 0.1);
         break;
     }
     cameraRef.current.lookAt(target);
-  }, [cameraPreset, bridgeParams.bridge_length]);
+  }, [cameraPreset, bridgeParams.bridge_length, isExpanded]);
 
   // 3. 🌟 지형(Terrain Mesh) 및 교량 구조물 동적 3D 파라메트릭 빌드
   useEffect(() => {
@@ -684,7 +701,11 @@ export const Bridge3DViewer: React.FC = () => {
   }, [bridgeParams, showPiles, showTerrain, showAlignment, wireframe, realTerrain]);
 
   return (
-    <div className="relative w-full h-[640px] rounded-xl overflow-hidden border border-slate-200 bg-slate-900 shadow-inner flex flex-col">
+    <div
+      className={`relative w-full ${
+        isExpanded ? 'h-[740px]' : 'h-[640px]'
+      } rounded-xl overflow-hidden border border-slate-200 bg-slate-900 shadow-inner flex flex-col transition-all duration-300`}
+    >
       {/* 3D Canvas Container */}
       <div ref={containerRef} className="w-full flex-1 cursor-grab active:cursor-grabbing" />
 
