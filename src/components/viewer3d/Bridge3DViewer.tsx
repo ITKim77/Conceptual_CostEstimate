@@ -22,6 +22,7 @@ import {
   generateKoreaAerialOrthophotoCanvas,
   KOREA_LOCATION_PRESETS
 } from '../../domain/constants/korea_terrain_presets';
+import { KoreaGISAlignmentPlanner } from '../gis/KoreaGISAlignmentPlanner';
 
 export const Bridge3DViewer: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -39,6 +40,7 @@ export const Bridge3DViewer: React.FC = () => {
   const [showTerrain, setShowTerrain] = useState(true);
   const [showAlignment, setShowAlignment] = useState(true);
   const [showDimensions, setShowDimensions] = useState(true);
+  const [isGISPlannerOpen, setIsGISPlannerOpen] = useState(false);
 
   // 1. Scene & Renderer Initialization
   useEffect(() => {
@@ -632,6 +634,16 @@ export const Bridge3DViewer: React.FC = () => {
             {bridgeParams.alignment.curve_radius && bridgeParams.alignment.curve_radius > 0 ? `R=${bridgeParams.alignment.curve_radius}m` : '직선'} / {bridgeParams.alignment.longitudinal_slope}%
           </span>
         )}
+
+        {/* 🌟 위성 지도 노선 계획기 원클릭 호출 버튼 */}
+        <button
+          onClick={() => setIsGISPlannerOpen(true)}
+          className="ml-1 px-2.5 py-1 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black rounded text-[11px] flex items-center gap-1 shadow-sm transition-all hover:scale-102 active:scale-98"
+          title="실제 대한민국 위성 지도 위에서 마우스로 노선을 계획합니다"
+        >
+          <Compass className="w-3.5 h-3.5" />
+          <span>🗺️ 위성 노선 계획기</span>
+        </button>
       </div>
 
       {/* View Options Toggle Controls (Bottom Left) */}
@@ -720,6 +732,17 @@ export const Bridge3DViewer: React.FC = () => {
           평면도
         </button>
       </div>
+
+      {/* 국토 위성 지도 노선 계획기 모달 오버레이 */}
+      {isGISPlannerOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+          <div className="w-full max-w-5xl max-h-[90vh] overflow-y-auto">
+            <KoreaGISAlignmentPlanner
+              onClose={() => setIsGISPlannerOpen(false)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

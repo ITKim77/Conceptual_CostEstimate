@@ -6,6 +6,7 @@ import { SUPERSTRUCTURE_CATALOG, PILE_UNIT_PRICES, REV04_CONSTANTS } from '../..
 import { SuperstructureType, PileMethod, FoundationType, TerrainType } from '../../domain/models/bridge';
 import { DEFAULT_TERRAIN, DEFAULT_ALIGNMENT } from '../../domain/engine/terrain_alignment_calculator';
 import { KOREA_LOCATION_PRESETS } from '../../domain/constants/korea_terrain_presets';
+import { KoreaGISAlignmentPlanner } from '../gis/KoreaGISAlignmentPlanner';
 import {
   Plus,
   Trash2,
@@ -59,6 +60,7 @@ export const ParametricInputPanel: React.FC = () => {
   );
 
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [isGISPlannerOpen, setIsGISPlannerOpen] = useState(false);
 
   useEffect(() => {
     if (activeAlt) {
@@ -190,7 +192,7 @@ export const ParametricInputPanel: React.FC = () => {
         {activeTab === 'terrain' && (
           <div className="space-y-4">
             {/* 상단 워크플로우 단계 안내 */}
-            <div className="p-3 bg-gradient-to-r from-indigo-900 via-indigo-800 to-slate-900 text-white rounded-lg shadow-sm space-y-1.5">
+            <div className="p-3 bg-gradient-to-r from-indigo-900 via-indigo-800 to-slate-900 text-white rounded-lg shadow-sm space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold flex items-center gap-1.5 text-indigo-200">
                   <Mountain className="w-4 h-4 text-amber-400" />
@@ -203,7 +205,30 @@ export const ParametricInputPanel: React.FC = () => {
               <p className="text-[11px] text-slate-300 leading-relaxed">
                 대한민국 <strong>실제 지표면(DEM)과 정사영상</strong>을 불러온 후, <strong>교량의 평면·종단 선형을 정의</strong>하고, 마지막으로 <strong>지형에 맞춰 교각과 말뚝을 자동 피팅</strong>합니다.
               </p>
+
+              {/* 🌟 국토 위성 지도 & 인터랙티브 노선 계획기 모달 호출 버튼 */}
+              <button
+                onClick={() => setIsGISPlannerOpen(true)}
+                className="w-full py-2.5 px-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black rounded-lg text-xs shadow-md flex items-center justify-center gap-2 transition-all hover:scale-[1.01] active:scale-[0.99]"
+              >
+                <Compass className="w-4 h-4 text-slate-950" />
+                <span>🗺️ 대한민국 국토 위성 지도에서 마우스로 노선 계획하기 (Vworld 3D)</span>
+              </button>
             </div>
+
+            {/* 국토 위성 지도 노선 계획기 모달 오버레이 */}
+            {isGISPlannerOpen && (
+              <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+                <div className="w-full max-w-5xl max-h-[90vh] overflow-y-auto">
+                  <KoreaGISAlignmentPlanner
+                    onClose={() => setIsGISPlannerOpen(false)}
+                    onApplyAlignment={(appliedLength, spanCount) => {
+                      showFeedback(`국토 위성 지도 노선 계획이 반영되었습니다: 총연장 ${appliedLength}m, ${spanCount}경간 자동 피팅 완료`);
+                    }}
+                  />
+                </div>
+              </div>
+            )}
 
             {/* Step 1. 대한민국 특정 위치 지표면 및 정사영상 프리셋 */}
             <div className="space-y-3 p-3 rounded-lg border-2 border-indigo-200 bg-indigo-50/20">
