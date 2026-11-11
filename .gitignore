@@ -7,6 +7,7 @@ node_modules/
 dist/
 build/
 out/
+*.tsbuildinfo
 
 # Environment and sensitive keys
 .env
@@ -34,3 +35,4 @@ pnpm-debug.log*
 Thumbs.db
 .vscode/
 .idea/
+
