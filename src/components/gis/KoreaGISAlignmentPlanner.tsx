@@ -383,6 +383,8 @@ export const KoreaGISAlignmentPlanner: React.FC<KoreaGISAlignmentPlannerProps> =
     const updated = {
       ...bridgeParams,
       name: `${selectedPOI.name} 계획안`,
+      locationName: selectedPOI.name,
+      coordinates: { lat: mapCenter.lat, lng: mapCenter.lng },
       bridge_length: totalLen,
       skew_angle: skewAngleDeg,
       spans: newSpans,

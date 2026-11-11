@@ -106,6 +106,8 @@ export interface BridgeParameters {
   apply_fsm_adjustment: boolean; // [Red]
   terrain?: TerrainParameters; // [Red] 지형 파라미터
   alignment?: AlignmentParameters; // [Red] 선형 파라미터
+  coordinates?: { lat: number; lng: number }; // [Red] 실측 국토 위경도 좌표
+  locationName?: string; // [Red] 국토 지명/주소
   description?: string;
 }
 

@@ -51,15 +51,22 @@ export const Bridge3DViewer: React.FC = () => {
     let isCancelled = false;
     setIsLoadingTerrain(true);
 
-    // 현재 대안의 지명에서 위경도 찾기 (매칭 실패 시 대전 갑천 기본 좌표)
+    // 1. 노선 계획기에서 지정한 실제 좌표 우선 반영
     let targetLat = 36.3852;
     let targetLng = 127.4241;
-    const foundPOI = KOREA_POI_DATABASE.find((p) =>
-      bridgeParams.name?.includes(p.name.split(' ')[0])
-    );
-    if (foundPOI) {
-      targetLat = foundPOI.lat;
-      targetLng = foundPOI.lng;
+
+    if (bridgeParams.coordinates?.lat && bridgeParams.coordinates?.lng) {
+      targetLat = bridgeParams.coordinates.lat;
+      targetLng = bridgeParams.coordinates.lng;
+    } else {
+      const foundPOI = KOREA_POI_DATABASE.find((p) =>
+        bridgeParams.name?.includes(p.name.split(' ')[0]) ||
+        bridgeParams.locationName?.includes(p.name.split(' ')[0])
+      );
+      if (foundPOI) {
+        targetLat = foundPOI.lat;
+        targetLng = foundPOI.lng;
+      }
     }
 
     loadRealWorldTerrain(targetLat, targetLng, 15, 80, 30)
@@ -77,7 +84,12 @@ export const Bridge3DViewer: React.FC = () => {
     return () => {
       isCancelled = true;
     };
-  }, [bridgeParams.name]);
+  }, [
+    bridgeParams.coordinates?.lat,
+    bridgeParams.coordinates?.lng,
+    bridgeParams.locationName,
+    bridgeParams.name
+  ]);
 
   // 1. Scene & Renderer Initialization
   useEffect(() => {
@@ -272,15 +284,38 @@ export const Bridge3DViewer: React.FC = () => {
 
     const totalBridgeLen = bridge_length || spans.reduce((sum, s) => sum + s.span_length, 0);
 
+    const xMargin = 60;
+    const xStart = -xMargin;
+    const xEnd = totalBridgeLen + xMargin;
+    const xSpan = xEnd - xStart;
+    const zSpan = 180; // 폭원 방향 지형 폭
+
+    // 🌟 SSOT 실측 지반고 함수: 지형 메쉬, 교대, 교각, 풋팅, 말뚝 기초가 100% 동일한 고도 체계를 공유
+    const getActualGroundY = (x: number, z: number = 0): number => {
+      if (realTerrain && realTerrain.elevationGrid.length > 0) {
+        const normX = Math.max(0, Math.min(1, (x - xStart) / xSpan));
+        const normZ = Math.max(0, Math.min(1, (z + zSpan / 2) / zSpan));
+        const gridZ = Math.min(
+          realTerrain.elevationGrid.length - 1,
+          Math.floor(normZ * (realTerrain.elevationGrid.length - 1))
+        );
+        const gridX = Math.min(
+          realTerrain.elevationGrid[0].length - 1,
+          Math.floor(normX * (realTerrain.elevationGrid[0].length - 1))
+        );
+        const rawElev = realTerrain.elevationGrid[gridZ][gridX];
+        return rawElev - realTerrain.centerElevation + 15;
+      }
+      const { groundElevation } = calculateOriginalGround(x, totalBridgeLen, terrain, alignment);
+      const zDist = Math.abs(z);
+      const sideSlope = (zDist / (zSpan / 2)) * 3.5;
+      return groundElevation + sideSlope;
+    };
+
     // =========================================================================
     // 1. 지형 메쉬 (Terrain Mesh) 생성 (Step 1.2)
     // =========================================================================
     if (showTerrain) {
-      const xMargin = 60;
-      const xStart = -xMargin;
-      const xEnd = totalBridgeLen + xMargin;
-      const xSpan = xEnd - xStart;
-      const zSpan = 180; // 폭원 방향 지형 폭
       const xSegments = 80;
       const zSegments = 30;
 
@@ -289,35 +324,11 @@ export const Bridge3DViewer: React.FC = () => {
       terrainGeo.translate(xStart + xSpan / 2, 0, 0);
 
       const posAttr = terrainGeo.attributes.position;
-      let minWaterY = Infinity;
 
       for (let i = 0; i < posAttr.count; i++) {
         const vx = posAttr.getX(i);
         const vz = posAttr.getZ(i);
-
-        let vy = 15;
-        if (realTerrain && realTerrain.elevationGrid.length > 0) {
-          // 🌟 실측 DEM (수치표고모델) 그리드에서 실제 해발고도 매핑
-          const normX = Math.max(0, Math.min(1, (vx - xStart) / xSpan));
-          const normZ = Math.max(0, Math.min(1, (vz + zSpan / 2) / zSpan));
-          const gridZ = Math.min(realTerrain.elevationGrid.length - 1, Math.floor(normZ * (realTerrain.elevationGrid.length - 1)));
-          const gridX = Math.min(realTerrain.elevationGrid[0].length - 1, Math.floor(normX * (realTerrain.elevationGrid[0].length - 1)));
-          const rawElev = realTerrain.elevationGrid[gridZ][gridX];
-          // 중심 표고 기준 상대 고도 스케일링 (시점 계획고 부근 정규화)
-          vy = rawElev - realTerrain.centerElevation + 15;
-        } else {
-          // 중심선 상의 지반고
-          const { groundElevation } = calculateOriginalGround(
-            vx,
-            totalBridgeLen,
-            terrain,
-            alignment
-          );
-          const zDist = Math.abs(vz);
-          const sideSlope = (zDist / (zSpan / 2)) * 3.5;
-          vy = groundElevation + sideSlope;
-        }
-
+        const vy = getActualGroundY(vx, vz);
         posAttr.setY(i, vy);
       }
 
@@ -376,11 +387,13 @@ export const Bridge3DViewer: React.FC = () => {
       }
 
       // 하천 수면 메쉬 (River Water Plane)
-      if (terrain.type === 'RIVER_CROSSING' && minWaterY !== Infinity) {
-        const waterWidth = terrain.river_width + 10;
+      if (terrain.type === 'RIVER_CROSSING') {
+        const centerGroundY = getActualGroundY(totalBridgeLen / 2, 0);
+        const waterY = centerGroundY + (terrain.water_level || 3.0);
+        const waterWidth = (terrain.river_width || 120) + 10;
         const waterGeo = new THREE.PlaneGeometry(waterWidth, zSpan);
         waterGeo.rotateX(-Math.PI / 2);
-        waterGeo.translate(totalBridgeLen / 2, minWaterY, 0);
+        waterGeo.translate(totalBridgeLen / 2, waterY, 0);
 
         const waterMat = new THREE.MeshStandardMaterial({
           color: 0x0284C7, // 청록빛 하천 수면
@@ -489,14 +502,15 @@ export const Bridge3DViewer: React.FC = () => {
     });
 
     // =========================================================================
-    // 3. 교대 (A1 & A2) 빌드 (지형 표면 안착)
+    // 3. 교대 (A1 & A2) 빌드 (실측 지반고 OG에 100% 밀착 안착)
     // =========================================================================
     const createAbutment = (xPos: number, isStart: boolean) => {
       const abutGroup = new THREE.Group();
       const fg = calculateFormationGround(xPos, alignment);
-      const { groundElevation: og } = calculateOriginalGround(xPos, totalBridgeLen, terrain, alignment);
+      // 🌟 실측 지반고 통일 함수 호출 (0mm 오차 없는 지표면 밀착)
+      const og = getActualGroundY(xPos, 0);
 
-      const abutHeight = Math.max(6, fg - og);
+      const abutHeight = Math.max(5, fg - og);
 
       // Backwall & Stem
       const stemGeo = new THREE.BoxGeometry(4.0, abutHeight, bridge_width + 2);
@@ -505,7 +519,7 @@ export const Bridge3DViewer: React.FC = () => {
       stemMesh.castShadow = true;
       abutGroup.add(stemMesh);
 
-      // Footing (지반고 OG에 딱 안착)
+      // Footing (지표면 OG에 딱 안착)
       const footingGeo = new THREE.BoxGeometry(8.0, 2.0, bridge_width + 4);
       const footingMesh = new THREE.Mesh(footingGeo, concreteMat);
       footingMesh.position.set(xPos + (isStart ? -2 : 2), og + 1.0, 0);
@@ -519,7 +533,7 @@ export const Bridge3DViewer: React.FC = () => {
     createAbutment(totalBridgeLen, false);
 
     // =========================================================================
-    // 4. 교각 (P1, P2...) 빌드 (지형 지반고 OG에 완벽 결합)
+    // 4. 교각 (P1, P2...) 빌드 (실측 지반고 OG에 100% 밀착 안착)
     // =========================================================================
     let spanCumX = 0;
     piers.forEach((pier, idx) => {
@@ -531,12 +545,13 @@ export const Bridge3DViewer: React.FC = () => {
 
       const pierGroup = new THREE.Group();
       const fg = calculateFormationGround(spanCumX, alignment);
-      const { groundElevation: og } = calculateOriginalGround(spanCumX, totalBridgeLen, terrain, alignment);
+      // 🌟 실측 지반고 통일 함수 호출 (허공 뜸 방지)
+      const og = getActualGroundY(spanCumX, 0);
 
-      // 상부고(거더/받침) 차감한 상단 표고
+      // 상부고(거더/받침 2.5m) 차감한 교각 상단 표고
       const topPierY = fg - 2.5;
-      const footingTopY = og + 1.5; // 지반고 위 푸팅 상단
-      const columnHeight = Math.max(5, topPierY - footingTopY);
+      const footingTopY = og + 2.0; // 지표면 위 풋팅(두께 2m) 상단
+      const columnHeight = Math.max(3.0, topPierY - footingTopY);
       const diam = pier.diameter || 2.8;
 
       // 1. Coping (T-Head)
@@ -546,7 +561,7 @@ export const Bridge3DViewer: React.FC = () => {
       copingMesh.castShadow = true;
       pierGroup.add(copingMesh);
 
-      // 2. Pier Column (지반선 푸팅까지 수직 연장)
+      // 2. Pier Column (지반선 풋팅 상단부터 코핑 바닥까지 정확한 연장)
       if (bridge_width >= 24) {
         const colGeo = new THREE.CylinderGeometry(diam / 2, diam / 2, columnHeight, 24);
         const col1 = new THREE.Mesh(colGeo, pierMat);
@@ -564,7 +579,7 @@ export const Bridge3DViewer: React.FC = () => {
         pierGroup.add(colMesh);
       }
 
-      // 3. Footing (지표면 OG에 정확히 안착)
+      // 3. Footing (두께 2m 푸팅 바닥이 지표면 OG에 정확히 안착)
       const footingGeo = new THREE.BoxGeometry(diam * 2.6, 2.0, bridge_width * 0.85);
       const footingMesh = new THREE.Mesh(footingGeo, concreteMat);
       footingMesh.position.set(spanCumX, og + 1.0, 0);
@@ -581,9 +596,9 @@ export const Bridge3DViewer: React.FC = () => {
       const pileRadius = 0.254; // D508 / 2 = 0.254m
       const pileGroups: { x: number; baseY: number; len: number; count: number }[] = [];
 
-      // A1 교대 말뚝
+      // A1 교대 말뚝 (실측 지반고에서 하향 관입)
       if (abutments[0]?.foundation === 'PILE') {
-        const { groundElevation: og0 } = calculateOriginalGround(0, totalBridgeLen, terrain, alignment);
+        const og0 = getActualGroundY(0, 0);
         pileGroups.push({
           x: 0,
           baseY: og0,
@@ -592,7 +607,7 @@ export const Bridge3DViewer: React.FC = () => {
         });
       }
 
-      // 교각 말뚝
+      // 교각 말뚝 (실측 지반고에서 하향 관입)
       let pCumX = 0;
       piers.forEach((p, pIdx) => {
         if (pIdx < spans.length - 1) {
@@ -601,7 +616,7 @@ export const Bridge3DViewer: React.FC = () => {
           pCumX = (totalBridgeLen / (piers.length + 1)) * (pIdx + 1);
         }
         if (p.foundation === 'PILE') {
-          const { groundElevation: ogP } = calculateOriginalGround(pCumX, totalBridgeLen, terrain, alignment);
+          const ogP = getActualGroundY(pCumX, 0);
           pileGroups.push({
             x: pCumX,
             baseY: ogP,
@@ -611,9 +626,9 @@ export const Bridge3DViewer: React.FC = () => {
         }
       });
 
-      // A2 교대 말뚝
+      // A2 교대 말뚝 (실측 지반고에서 하향 관입)
       if (abutments[1]?.foundation === 'PILE') {
-        const { groundElevation: ogEnd } = calculateOriginalGround(totalBridgeLen, totalBridgeLen, terrain, alignment);
+        const ogEnd = getActualGroundY(totalBridgeLen, 0);
         pileGroups.push({
           x: totalBridgeLen,
           baseY: ogEnd,
