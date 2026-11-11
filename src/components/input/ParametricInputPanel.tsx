@@ -5,7 +5,6 @@ import { SSOTInput, SSOTSelect, SSOTConstant } from '../common/SSOTFields';
 import { SUPERSTRUCTURE_CATALOG, PILE_UNIT_PRICES, REV04_CONSTANTS } from '../../domain/constants/rev04_database';
 import { SuperstructureType, PileMethod, FoundationType, TerrainType } from '../../domain/models/bridge';
 import { DEFAULT_TERRAIN, DEFAULT_ALIGNMENT } from '../../domain/engine/terrain_alignment_calculator';
-import { KOREA_LOCATION_PRESETS } from '../../domain/constants/korea_terrain_presets';
 import { KoreaGISAlignmentPlanner } from '../gis/KoreaGISAlignmentPlanner';
 import {
   Plus,
@@ -43,7 +42,6 @@ export const ParametricInputPanel: React.FC = () => {
     updateTerrainParams,
     updateAlignmentParams,
     autoFitPiersToTerrain,
-    loadKoreaLocationPreset,
     // 대안 관리 액션 (원안/대안 구분 없음)
     alternatives,
     activeAlternativeId,
@@ -191,20 +189,45 @@ export const ParametricInputPanel: React.FC = () => {
         {/* 🌟 1. 지형·선형 탭 (토목공학 기본 워크플로우: 지형/선형 결정 -> 구조물 제원 -> 하부/기초 피팅) */}
         {activeTab === 'terrain' && (
           <div className="space-y-4">
-            {/* 상단 워크플로우 단계 안내 */}
-            <div className="p-3 bg-gradient-to-r from-indigo-900 via-indigo-800 to-slate-900 text-white rounded-lg shadow-sm space-y-2">
+            {/* 상단 워크플로우 단계 안내 & 1단계: 대한민국 국토 위성 지도 노선 계획기 */}
+            <div className="p-3.5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-xl shadow-md space-y-2.5 border border-indigo-900/60">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold flex items-center gap-1.5 text-indigo-200">
-                  <Mountain className="w-4 h-4 text-amber-400" />
-                  대한민국 실제 지형 & 도로 선형 기반 구조물 설계
+                <span className="text-xs font-extrabold flex items-center gap-1.5 text-amber-300">
+                  <Compass className="w-4 h-4 text-amber-400" />
+                  [1단계] 대한민국 국토 위성 지도에서 교량 노선 계획 (Vworld 3D)
                 </span>
-                <span className="text-[10px] bg-indigo-700/80 text-indigo-100 px-2 py-0.5 rounded-full font-mono border border-indigo-500/40">
-                  Step 1 → Step 2 → Step 3
+                <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-mono border border-emerald-500/40">
+                  실시간 DEM & 위성 스트리밍
                 </span>
               </div>
               <p className="text-[11px] text-slate-300 leading-relaxed">
-                대한민국 <strong>실제 지표면(DEM)과 정사영상</strong>을 불러온 후, <strong>교량의 평면·종단 선형을 정의</strong>하고, 마지막으로 <strong>지형에 맞춰 교각과 말뚝을 자동 피팅</strong>합니다.
+                대한민국 전역 어디든 검색하여 <strong>실측 DEM 지표면과 항공 정사영상</strong>을 불러온 뒤, 마우스 클릭으로 교량 시점(A1)과 종점(A2)을 지정하면 총연장과 경간 수가 즉시 설계됩니다.
               </p>
+
+              {/* 현재 계획 위치 및 제원 상태 카드 */}
+              <div className="p-2.5 bg-slate-950/80 rounded-lg border border-slate-800 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-rose-400 shrink-0" />
+                  <div>
+                    <span className="text-slate-200 font-bold block">
+                      {bridgeParams.locationName || '대전 신탄진 연축교 일원'}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      {bridgeParams.coordinates
+                        ? `위도 ${bridgeParams.coordinates.lat.toFixed(4)}°, 경도 ${bridgeParams.coordinates.lng.toFixed(4)}°`
+                        : '좌표 미정'}
+                    </span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-amber-400 font-extrabold font-mono text-sm block">
+                    L = {bridgeParams.bridge_length}m
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    {bridgeParams.spans.length}경간 • 교각 {bridgeParams.piers.length}기
+                  </span>
+                </div>
+              </div>
 
               {/* 🌟 국토 위성 지도 & 인터랙티브 노선 계획기 모달 호출 버튼 */}
               <button
@@ -212,7 +235,7 @@ export const ParametricInputPanel: React.FC = () => {
                 className="w-full py-2.5 px-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black rounded-lg text-xs shadow-md flex items-center justify-center gap-2 transition-all hover:scale-[1.01] active:scale-[0.99]"
               >
                 <Compass className="w-4 h-4 text-slate-950" />
-                <span>🗺️ 대한민국 국토 위성 지도에서 마우스로 노선 계획하기 (Vworld 3D)</span>
+                <span>🗺️ 위성 지도 열기 (자유 이동·줌 & 마우스 노선 계획)</span>
               </button>
             </div>
 
@@ -230,119 +253,15 @@ export const ParametricInputPanel: React.FC = () => {
               </div>
             )}
 
-            {/* Step 1. 대한민국 특정 위치 지표면 및 정사영상 프리셋 */}
-            <div className="space-y-3 p-3 rounded-lg border-2 border-indigo-200 bg-indigo-50/20">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-indigo-950 flex items-center gap-1.5">
-                  <MapPin className="w-4 h-4 text-indigo-600" />
-                  [Step 1] 대한민국 특정 위치 지표면 & 항공 정사영상 선택
-                </span>
-                <span className="text-[10px] font-bold text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded">
-                  실측 DEM / 정사영상
-                </span>
-              </div>
-
-              {/* 프리셋 버튼 그리드 */}
-              <div className="grid grid-cols-2 gap-2">
-                {KOREA_LOCATION_PRESETS.map((preset) => {
-                  const isSelected = bridgeParams.name?.includes(preset.name.split(' ')[0]);
-                  return (
-                    <button
-                      key={preset.id}
-                      onClick={() => {
-                        loadKoreaLocationPreset(preset.id);
-                        showFeedback(`'${preset.name}'의 실제 지표면 DEM, 항공 정사영상 및 권장 선형이 로드되었습니다.`);
-                      }}
-                      className={`p-2.5 rounded-lg border text-left transition-all relative overflow-hidden flex flex-col justify-between ${
-                        isSelected
-                          ? 'border-indigo-600 bg-indigo-50 ring-2 ring-indigo-400/50'
-                          : 'border-slate-200 bg-white hover:border-indigo-300 hover:bg-slate-50'
-                      }`}
-                    >
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-bold text-slate-900">{preset.name}</span>
-                          <span className="text-[10px] font-semibold px-1.5 py-0.2 bg-slate-100 text-slate-700 rounded">
-                            {preset.region}
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-slate-500 line-clamp-1">{preset.description}</p>
-                      </div>
-
-                      <div className="mt-2 pt-1.5 border-t border-slate-100 flex items-center justify-between text-[10px] font-mono text-slate-600">
-                        <span>하천폭: {preset.terrain.river_width}m</span>
-                        <span className="text-indigo-600 font-bold">경간 {preset.recommendedSpans.length}련</span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* 지형 상세 제원 수동 미세조정 */}
-              <div className="pt-2 border-t border-indigo-100 space-y-2">
-                <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
-                  <Layers className="w-3.5 h-3.5 text-indigo-500" />
-                  지표면 DEM 상세 파라메터 미세조정 (SSOT)
-                </span>
-
-                <SSOTSelect
-                  label="횡단 지형 유형"
-                  value={bridgeParams.terrain?.type || DEFAULT_TERRAIN.type}
-                  onChange={(e) => updateTerrainParams({ type: e.target.value as TerrainType })}
-                >
-                  <option value="RIVER_CROSSING">하천 횡단형 (중앙 하천 및 양안 제방/둔치)</option>
-                  <option value="VALLEY">산악 V자 계곡형 (중앙 심도가 깊은 협곡 지형)</option>
-                  <option value="FLAT_CROSSROAD">평지 및 교차로 횡단형 (기존 도로/철도 상공 통과)</option>
-                  <option value="MOUNTAIN_PASS">산악 고개/능선형 (절토 접속 및 복합 지형)</option>
-                </SSOTSelect>
-
-                <div className="grid grid-cols-3 gap-2">
-                  <SSOTInput
-                    label="계곡/하상 저면 심도"
-                    unit="m"
-                    type="number"
-                    min="2"
-                    max="60"
-                    step="1"
-                    value={bridgeParams.terrain?.valley_depth ?? DEFAULT_TERRAIN.valley_depth}
-                    onChange={(e) => updateTerrainParams({ valley_depth: parseFloat(e.target.value) || 0 })}
-                    helperText="최대 저하 심도"
-                  />
-                  <SSOTInput
-                    label="하천/계곡 바닥폭"
-                    unit="m"
-                    type="number"
-                    min="20"
-                    max="600"
-                    step="5"
-                    value={bridgeParams.terrain?.river_width ?? DEFAULT_TERRAIN.river_width}
-                    onChange={(e) => updateTerrainParams({ river_width: parseFloat(e.target.value) || 0 })}
-                    helperText="평탄 하상 폭"
-                  />
-                  <SSOTInput
-                    label="지지층(암반) 심도"
-                    unit="m"
-                    type="number"
-                    min="5"
-                    max="60"
-                    step="1"
-                    value={bridgeParams.terrain?.bearing_stratum_depth ?? DEFAULT_TERRAIN.bearing_stratum_depth}
-                    onChange={(e) => updateTerrainParams({ bearing_stratum_depth: parseFloat(e.target.value) || 0 })}
-                    helperText="말뚝 근입 심도"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Step 2. 도로 선형 계획 (평면 및 종단선형 정의) */}
+            {/* [2단계] 도로 선형 계획 (평면 및 종단선형 정의) */}
             <div className="space-y-3 p-3 rounded-lg border-2 border-red-200 bg-red-50/15">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-red-700 flex items-center gap-1.5">
                   <Compass className="w-4 h-4 text-red-500" />
-                  [Step 2] 교량 도로 선형 정의 (평면선형 & 종단선형 SSOT)
+                  [2단계] 교량 도로 선형 정의 (평면선형 & 종단선형 SSOT)
                 </span>
                 <span className="text-[10px] font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded">
-                  선형 우선 정의
+                  선형 정의
                 </span>
               </div>
 
@@ -404,12 +323,12 @@ export const ParametricInputPanel: React.FC = () => {
               </div>
             </div>
 
-            {/* Step 3. 지형 및 선형 기반 교각/말뚝 자동 피팅 */}
+            {/* [3단계] 지형 및 선형 기반 교각/말뚝 자동 피팅 */}
             <div className="p-3 bg-gradient-to-r from-indigo-900 to-slate-900 text-white rounded-lg space-y-2 shadow-sm">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold flex items-center gap-1.5 text-amber-300">
                   <Sparkles className="w-4 h-4 text-amber-400" />
-                  [Step 3] 선형 & 지형 지반고 기반 교각·말뚝 자동 피팅
+                  [3단계] 선형 & 지형 지반고 기반 교각·말뚝 자동 피팅
                 </span>
                 <button
                   onClick={() => {

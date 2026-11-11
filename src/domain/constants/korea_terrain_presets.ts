@@ -238,3 +238,4 @@ export function generateKoreaAerialOrthophotoCanvas(
 
   return canvas;
 }
+

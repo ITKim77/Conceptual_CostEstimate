@@ -136,9 +136,23 @@ export const useBridgeStore = create<BridgeStoreState>((set, get) => ({
     set((state) => {
       const newParams = { ...state.bridgeParams, ...partial };
       const newBreakdown = calculateBridgeCost(newParams);
+
+      // 활성 대안이 있을 경우 alternatives 목록 내의 해당 대안도 실시간 동기화
+      const updatedAlts = state.alternatives.map((alt) =>
+        alt.id === state.activeAlternativeId
+          ? {
+              ...alt,
+              name: newParams.name || alt.name,
+              bridgeParams: newParams,
+              costBreakdown: newBreakdown
+            }
+          : alt
+      );
+
       return {
         bridgeParams: newParams,
-        costBreakdown: newBreakdown
+        costBreakdown: newBreakdown,
+        alternatives: updatedAlts
       };
     });
   },

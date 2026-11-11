@@ -30,7 +30,7 @@ import {
 } from '../../domain/gis/korea_geocoding';
 import { latLngToTileCoords, tileCoordsToLatLng, getSatelliteTileUrl, getTerrariumDemTileUrl, decodeTerrariumRGBToElevation } from '../../domain/gis/tile_coords';
 import { useBridgeStore } from '../../store/useBridgeStore';
-import { SpanItem, PierItem, AbutmentItem, TerrainParameters, AlignmentParameters } from '../../domain/models/bridge';
+import { SpanItem, PierItem, AbutmentItem, TerrainParameters, AlignmentParameters, SuperstructureType } from '../../domain/models/bridge';
 import { calculatePierFittings } from '../../domain/engine/terrain_alignment_calculator';
 
 interface AlignmentLatLngPoint {
@@ -49,7 +49,13 @@ export const KoreaGISAlignmentPlanner: React.FC<KoreaGISAlignmentPlannerProps> =
   onConfirmAlignment,
   onApplyAlignment
 }) => {
-  const { bridgeParams, updateBridgeParams, setViewMode } = useBridgeStore();
+  const {
+    bridgeParams,
+    updateBridgeParams,
+    setViewMode,
+    saveCurrentAlternative,
+    autoFitPiersToTerrain
+  } = useBridgeStore();
 
   // 1. 지도 중심 좌표 (WGS84) 및 줌 레벨
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>(() => {
@@ -441,12 +447,13 @@ export const KoreaGISAlignmentPlanner: React.FC<KoreaGISAlignmentPlannerProps> =
   const handleConfirmAndProceed = () => {
     const totalLen = calculatedLengthMeters;
 
-    // 1. 새 경간 구성
+    // 1. 새 경간 구성 (기존 상부 형식 계승)
+    const existingType = (bridgeParams.spans[0]?.type || 'MODIFIED_PSC_BEAM') as SuperstructureType;
     const newSpans: SpanItem[] = recommendedSpans.map((s, idx) => ({
       id: `span_${idx + 1}`,
       span_index: idx + 1,
       span_length: s.length,
-      type: 'MODIFIED_PSC_BEAM',
+      type: existingType,
       foundation: 'PILE'
     }));
 
@@ -508,9 +515,11 @@ export const KoreaGISAlignmentPlanner: React.FC<KoreaGISAlignmentPlannerProps> =
       }
     ];
 
+    const planName = `${locationName} 계획안 (${totalLen}m)`;
+
     const updated = {
       ...bridgeParams,
-      name: `${locationName} 계획안`,
+      name: planName,
       locationName,
       coordinates: { lat: mapCenter.lat, lng: mapCenter.lng },
       bridge_length: totalLen,
@@ -522,7 +531,17 @@ export const KoreaGISAlignmentPlanner: React.FC<KoreaGISAlignmentPlannerProps> =
       alignment: newAlignment
     };
 
+    // 1) 상태 업데이트
     updateBridgeParams(updated);
+
+    // 2) 활성 대안 및 저장소 동기화
+    saveCurrentAlternative(planName);
+
+    // 3) 지형-선형 기반 피팅 재확정
+    autoFitPiersToTerrain();
+
+    // 4) 3D BIM 뷰어 모드로 자동 전환
+    setViewMode('3D');
 
     if (onConfirmAlignment) {
       onConfirmAlignment(totalLen, newSpans.length);

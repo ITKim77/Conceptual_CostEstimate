@@ -45,3 +45,4 @@ export function getTerrariumDemTileUrl(x: number, y: number, zoom: number): stri
 export function decodeTerrariumRGBToElevation(r: number, g: number, b: number): number {
   return r * 256 + g + b / 256 - 32768;
 }
+

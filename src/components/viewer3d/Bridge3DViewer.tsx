@@ -88,8 +88,16 @@ export const Bridge3DViewer: React.FC = () => {
     bridgeParams.coordinates?.lat,
     bridgeParams.coordinates?.lng,
     bridgeParams.locationName,
-    bridgeParams.name
+    bridgeParams.name,
+    bridgeParams.bridge_length
   ]);
+
+  // 노선 계획 반영 토스트 메시지 상태
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 4000);
+  };
 
   // 1. Scene & Renderer Initialization
   useEffect(() => {
@@ -235,26 +243,31 @@ export const Bridge3DViewer: React.FC = () => {
     };
   }, []);
 
-  // 2. Camera Preset Controls
+  // 2. Camera Preset Controls (교량 총연장에 맞춘 동적 시점 포커싱)
   useEffect(() => {
     if (!cameraRef.current) return;
-    const target = new THREE.Vector3(120, 15, 0);
+    const totalL = bridgeParams.bridge_length || 200;
+    const centerX = totalL / 2;
+    const target = new THREE.Vector3(centerX, 15, 0);
+
+    const distScale = Math.max(1.0, totalL / 200);
+
     switch (cameraPreset) {
       case 'iso':
-        cameraRef.current.position.set(160, 65, 150);
+        cameraRef.current.position.set(centerX + 60 * distScale, 65 * distScale, 150 * distScale);
         break;
       case 'elevation':
-        cameraRef.current.position.set(120, 25, 200);
+        cameraRef.current.position.set(centerX, 25 * distScale, 200 * distScale);
         break;
       case 'cross':
-        cameraRef.current.position.set(-60, 30, 0);
+        cameraRef.current.position.set(-60 * distScale, 30 * distScale, 0);
         break;
       case 'plan':
-        cameraRef.current.position.set(120, 240, 0.1);
+        cameraRef.current.position.set(centerX, 240 * distScale, 0.1);
         break;
     }
     cameraRef.current.lookAt(target);
-  }, [cameraPreset]);
+  }, [cameraPreset, bridgeParams.bridge_length]);
 
   // 3. 🌟 지형(Terrain Mesh) 및 교량 구조물 동적 3D 파라메트릭 빌드
   useEffect(() => {
@@ -806,12 +819,23 @@ export const Bridge3DViewer: React.FC = () => {
         </button>
       </div>
 
+      {/* 🌟 노선 계획 실시간 반영 완료 알림 토스트 */}
+      {toastMessage && (
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-40 bg-emerald-600/95 text-white px-4 py-2 rounded-xl shadow-2xl border border-emerald-400 text-xs font-bold flex items-center gap-2 animate-bounce">
+          <Sparkles className="w-4 h-4 text-amber-300" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
       {/* 국토 위성 지도 노선 계획기 모달 오버레이 */}
       {isGISPlannerOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
           <div className="w-full max-w-5xl max-h-[90vh] overflow-y-auto">
             <KoreaGISAlignmentPlanner
               onClose={() => setIsGISPlannerOpen(false)}
+              onApplyAlignment={(appliedLength, spanCount) => {
+                showToast(`✅ [${bridgeParams.locationName || '선택 위치'}] 노선 계획이 3D BIM에 성공적으로 반영되었습니다! (총연장 ${appliedLength}m, ${spanCount}경간)`);
+              }}
             />
           </div>
         </div>
