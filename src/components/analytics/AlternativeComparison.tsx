@@ -11,20 +11,33 @@ import {
   Legend,
   ResponsiveContainer
 } from 'recharts';
-import { Plus, CheckCircle, TrendingUp, DollarSign, Layers } from 'lucide-react';
+import { CheckCircle, TrendingUp, DollarSign, Layers, Edit2, ArrowRight } from 'lucide-react';
 
 export const AlternativeComparison: React.FC = () => {
   const {
     alternatives,
     activeAlternativeId,
     loadAlternative,
-    saveCurrentAsAlternative,
     deleteAlternative,
-    bridgeParams
+    updateAlternativeName,
+    setViewMode
   } = useBridgeStore();
 
-  const [newAltName, setNewAltName] = useState('');
-  const [showAddModal, setShowAddModal] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
+
+  const startRename = (id: string, currentName: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingId(id);
+    setEditingName(currentName);
+  };
+
+  const submitRename = (id: string) => {
+    if (editingName.trim()) {
+      updateAlternativeName(id, editingName.trim());
+    }
+    setEditingId(null);
+  };
 
   // 1. Recharts 총공사비 비교 데이터셋 구성
   const totalCostChartData = alternatives.map((alt) => {
@@ -54,14 +67,6 @@ export const AlternativeComparison: React.FC = () => {
   const baseAlt = alternatives[0] || null;
   const baseTotalCost = baseAlt ? baseAlt.costBreakdown.total_construction_cost : 1;
 
-  const handleSaveAlternative = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newAltName.trim()) return;
-    saveCurrentAsAlternative(newAltName.trim());
-    setNewAltName('');
-    setShowAddModal(false);
-  };
-
   return (
     <div className="space-y-6">
       {/* Top Action Bar */}
@@ -72,33 +77,41 @@ export const AlternativeComparison: React.FC = () => {
             고속도로 교량 계획 대안별 공사비 및 경제성 비교 분석
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            등록된 대안들 간의 총공사비, ㎡당 단가, 공종별 원가 구조를 다차원 비교합니다.
+            등록된 {alternatives.length}개 대안 간의 총공사비, ㎡당 단가, 공종별 원가 구조를 상호 비교합니다.
           </p>
         </div>
         <button
-          onClick={() => setShowAddModal(true)}
+          onClick={() => setViewMode('3D')}
           className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-2 rounded-lg text-xs font-bold shadow-sm transition-all"
         >
-          <Plus className="w-4 h-4" />
-          현재 설계를 새 대안으로 저장
+          <span>3D BIM 제원 입력 패널로 이동</span>
+          <ArrowRight className="w-4 h-4" />
         </button>
       </div>
 
       {/* Alternative Cards Selector */}
       {alternatives.length === 0 ? (
-        <div className="bg-white p-10 rounded-xl border border-slate-200 text-center space-y-3 shadow-xs">
-          <div className="w-12 h-12 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto">
-            <Layers className="w-6 h-6" />
+        <div className="bg-white p-12 rounded-xl border border-slate-200 text-center space-y-4 shadow-xs">
+          <div className="w-14 h-14 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto">
+            <Layers className="w-7 h-7" />
           </div>
-          <h3 className="text-sm font-bold text-slate-900">등록된 대안이 없습니다 (원안 미등록 상태)</h3>
+          <h3 className="text-sm font-bold text-slate-900">등록된 비교 대안이 없습니다</h3>
           <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
-            '3D BIM 모델러' 탭에서 교량 제원을 검토한 후, <strong>'대안 추가 현황'</strong> 바에서 <strong>'원안으로 등록'</strong>을 진행해 주세요.
-            원안 확정 후 다양한 경간과 형식의 비교안을 추가하여 경제성을 다차원 분석할 수 있습니다.
+            '3D BIM 모델러' 탭의 <strong>파라메트릭 제원 입력 패널</strong>에서 교량 제원을 조정한 후,
+            패널 하단의 <strong>[➕ 새 대안으로 저장]</strong> 버튼을 눌러 여러 대안을 등록해주세요.
           </p>
+          <button
+            onClick={() => setViewMode('3D')}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold inline-flex items-center gap-1.5 shadow-sm transition-all"
+          >
+            <span>제원 입력 및 대안 추가하러 가기</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          {/* 대안 카드 목록 */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
             {alternatives.map((alt, idx) => {
               const isActive = alt.id === activeAlternativeId;
               const totalCostBillion = (alt.costBreakdown.total_construction_cost / 100000000).toFixed(2);
@@ -109,23 +122,51 @@ export const AlternativeComparison: React.FC = () => {
                 <div
                   key={alt.id}
                   onClick={() => loadAlternative(alt.id)}
-                  className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all ${isActive ? 'border-indigo-600 bg-indigo-50/40 shadow-md ring-2 ring-indigo-500/20' : 'border-slate-200 bg-white hover:border-slate-300 shadow-xs'}`}
+                  className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
+                    isActive
+                      ? 'border-indigo-600 bg-indigo-50/40 shadow-md ring-2 ring-indigo-500/20'
+                      : 'border-slate-200 bg-white hover:border-slate-300 shadow-xs'
+                  }`}
                 >
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs font-bold text-slate-900 truncate">{alt.name}</span>
-                    {isActive ? (
-                      <span className="flex items-center gap-0.5 text-[10px] font-bold text-indigo-700 bg-indigo-100 px-1.5 py-0.5 rounded">
+                    {editingId === alt.id ? (
+                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="text"
+                          value={editingName}
+                          onChange={(e) => setEditingName(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && submitRename(alt.id)}
+                          onBlur={() => submitRename(alt.id)}
+                          autoFocus
+                          className="px-1.5 py-0.5 text-xs font-bold border border-indigo-500 rounded bg-white w-28"
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1 truncate max-w-[150px]">
+                        <span className="text-xs font-bold text-slate-900 truncate">{alt.name}</span>
+                        <button
+                          onClick={(e) => startRename(alt.id, alt.name, e)}
+                          className="p-0.5 text-slate-400 hover:text-indigo-600"
+                          title="대안 명칭 변경"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
+
+                    {isActive && (
+                      <span className="flex items-center gap-0.5 text-[10px] font-bold text-indigo-700 bg-indigo-100 px-1.5 py-0.5 rounded shrink-0">
                         <CheckCircle className="w-3 h-3 text-indigo-600" />
                         선택됨
                       </span>
-                    ) : (
-                      idx === 0 && <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">기준(원안)</span>
                     )}
                   </div>
+
                   <div className="flex items-baseline gap-1">
                     <span className="text-lg font-extrabold text-indigo-700 tracking-tight">{totalCostBillion}</span>
                     <span className="text-xs font-semibold text-slate-600">억원</span>
                   </div>
+
                   <div className="flex items-center justify-between text-[11px] text-slate-500 mt-2 pt-2 border-t border-slate-100">
                     <span>{unitCostMan} 만원/㎡</span>
                     {idx > 0 && (
@@ -209,7 +250,7 @@ export const AlternativeComparison: React.FC = () => {
                     <th className="py-2.5 px-3 text-right">직접공사비</th>
                     <th className="py-2.5 px-3 text-right">총공사비</th>
                     <th className="py-2.5 px-3 text-right">㎡당 단가</th>
-                    <th className="py-2.5 px-3 text-center">원안 대비 증감</th>
+                    <th className="py-2.5 px-3 text-center">상대 차이</th>
                     <th className="py-2.5 px-3 text-center">관리</th>
                   </tr>
                 </thead>
@@ -225,13 +266,34 @@ export const AlternativeComparison: React.FC = () => {
                       <tr key={alt.id} className={`hover:bg-slate-50 ${isSelected ? 'bg-indigo-50/30' : ''}`}>
                         <td className="py-2.5 px-3 font-bold text-slate-900 flex items-center gap-1.5">
                           <span className="w-2 h-2 rounded-full" style={{ backgroundColor: alt.color }}></span>
-                          {alt.name}
+                          {editingId === alt.id ? (
+                            <input
+                              type="text"
+                              value={editingName}
+                              onChange={(e) => setEditingName(e.target.value)}
+                              onKeyDown={(e) => e.key === 'Enter' && submitRename(alt.id)}
+                              onBlur={() => submitRename(alt.id)}
+                              autoFocus
+                              className="px-1.5 py-0.5 text-xs font-bold border border-indigo-500 rounded bg-white"
+                            />
+                          ) : (
+                            <span className="flex items-center gap-1">
+                              {alt.name}
+                              <button
+                                onClick={(e) => startRename(alt.id, alt.name, e)}
+                                className="text-slate-400 hover:text-indigo-600"
+                                title="이름 수정"
+                              >
+                                <Edit2 className="w-3 h-3" />
+                              </button>
+                            </span>
+                          )}
                         </td>
                         <td className="py-2.5 px-3 text-slate-600">
                           L={alt.bridgeParams.bridge_length}m / B={alt.bridgeParams.bridge_width}m
                         </td>
                         <td className="py-2.5 px-3 text-slate-600 truncate max-w-[200px]">
-                          {alt.bridgeParams.spans.map(s => `${s.span_length}m`).join('+')} ({alt.bridgeParams.spans[0]?.type})
+                          {alt.bridgeParams.spans.map((s) => `${s.span_length}m`).join('+')} ({alt.bridgeParams.spans[0]?.type})
                         </td>
                         <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-700">
                           {directBillion} 억
@@ -244,7 +306,7 @@ export const AlternativeComparison: React.FC = () => {
                         </td>
                         <td className="py-2.5 px-3 text-center font-bold">
                           {idx === 0 ? (
-                            <span className="text-slate-400">기준안</span>
+                            <span className="text-slate-400">대안 1 대비</span>
                           ) : (
                             <span className={parseFloat(deltaPct) > 0 ? 'text-red-600' : 'text-emerald-600'}>
                               {parseFloat(deltaPct) > 0 ? `+${deltaPct}` : deltaPct}
@@ -252,14 +314,16 @@ export const AlternativeComparison: React.FC = () => {
                           )}
                         </td>
                         <td className="py-2.5 px-3 text-center">
-                          {alternatives.length > 1 && idx > 0 && (
-                            <button
-                              onClick={() => deleteAlternative(alt.id)}
-                              className="text-red-500 hover:text-red-700 font-bold text-[11px]"
-                            >
-                              삭제
-                            </button>
-                          )}
+                          <button
+                            onClick={() => {
+                              if (confirm(`'${alt.name}' 대안을 삭제하시겠습니까?`)) {
+                                deleteAlternative(alt.id);
+                              }
+                            }}
+                            className="text-red-500 hover:text-red-700 font-bold text-[11px]"
+                          >
+                            삭제
+                          </button>
                         </td>
                       </tr>
                     );
@@ -269,46 +333,6 @@ export const AlternativeComparison: React.FC = () => {
             </div>
           </div>
         </>
-      )}
-
-      {/* Save Alternative Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-xl max-w-md w-full p-5 shadow-2xl border border-slate-200">
-            <h3 className="text-base font-bold text-slate-900 mb-2">현재 설계를 새 대안으로 저장</h3>
-            <p className="text-xs text-slate-500 mb-4">
-              현재 파라메터 제원(L={bridgeParams.bridge_length}m, {bridgeParams.spans.length}경간)을 별도 대안으로 보존합니다.
-            </p>
-            <form onSubmit={handleSaveAlternative} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">대안 명칭</label>
-                <input
-                  type="text"
-                  required
-                  value={newAltName}
-                  onChange={(e) => setNewAltName(e.target.value)}
-                  placeholder="예: 비교 2안 (장경간 강합성교안)"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-semibold focus:outline-none focus:border-indigo-600"
-                />
-              </div>
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(false)}
-                  className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100"
-                >
-                  취소
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 rounded-lg text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm"
-                >
-                  저장하기
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
       )}
     </div>
   );

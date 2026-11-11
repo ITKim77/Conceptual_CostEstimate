@@ -22,6 +22,8 @@ import {
 
 export const App: React.FC = () => {
   const {
+    projectName,
+    setProjectName,
     bridgeParams,
     costBreakdown,
     selectedViewMode,
@@ -45,7 +47,7 @@ export const App: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
           {/* Logo & Project Title */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-sky-500 flex items-center justify-center text-white shadow-md">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-sky-500 flex items-center justify-center text-white shadow-md shrink-0">
               <Layers className="w-6 h-6" />
             </div>
             <div>
@@ -57,10 +59,25 @@ export const App: React.FC = () => {
                   REV.04
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-slate-500 hidden sm:block">
                 도로/교량 계획단계 개략공사비 산정 표준 DB 및 파라메트릭 3D BIM 연동 엔진
               </p>
             </div>
+          </div>
+
+          {/* 🌟 프로젝트 명 단일 입력 필드 (SSOT Red - 전역 유일 입력처) */}
+          <div className="flex items-center gap-1.5 bg-red-50/50 border-2 border-red-200 hover:border-red-300 focus-within:border-red-600 px-3 py-1.5 rounded-lg transition-all shadow-2xs">
+            <span className="text-[11px] font-extrabold text-red-600 whitespace-nowrap flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+              프로젝트 명:
+            </span>
+            <input
+              type="text"
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+              placeholder="예: OO고속도로 제1교량 계획"
+              className="bg-transparent text-xs font-bold text-slate-900 focus:outline-none w-36 sm:w-56 placeholder-slate-400"
+            />
           </div>
 
           {/* Alternative Quick Switcher & Project Reset Button */}
@@ -71,10 +88,10 @@ export const App: React.FC = () => {
               <select
                 value={activeAlternativeId || ''}
                 onChange={(e) => e.target.value && loadAlternative(e.target.value)}
-                className="bg-transparent font-bold text-indigo-700 focus:outline-none cursor-pointer max-w-[180px] truncate"
+                className="bg-transparent font-bold text-indigo-700 focus:outline-none cursor-pointer max-w-[160px] truncate"
               >
                 {alternatives.length === 0 ? (
-                  <option value="">대안 미등록 (원안 필요)</option>
+                  <option value="">대안 미등록 (신규 제원)</option>
                 ) : (
                   alternatives.map((alt) => (
                     <option key={alt.id} value={alt.id}>

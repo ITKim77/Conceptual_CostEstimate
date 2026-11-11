@@ -1,5 +1,5 @@
 // src/components/input/ParametricInputPanel.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useBridgeStore } from '../../store/useBridgeStore';
 import { SSOTInput, SSOTSelect, SSOTConstant } from '../common/SSOTFields';
 import { SUPERSTRUCTURE_CATALOG, PILE_UNIT_PRICES, REV04_CONSTANTS } from '../../domain/constants/rev04_database';
@@ -10,12 +10,11 @@ import {
   Sliders,
   ShieldAlert,
   Cpu,
-  BookmarkPlus,
   Save,
   CheckCircle2,
-  Layers,
   Wrench,
-  AlertCircle
+  AlertCircle,
+  FolderPlus
 } from 'lucide-react';
 
 export const ParametricInputPanel: React.FC = () => {
@@ -33,29 +32,61 @@ export const ParametricInputPanel: React.FC = () => {
     updateAbutment,
     setPileMethod,
     applyBatchPileParams,
-    // 대안 관리 액션
+    // 대안 관리 액션 (원안/대안 구분 없음)
     alternatives,
     activeAlternativeId,
-    registerCurrentAsAlternative,
-    updateCurrentAlternative,
+    saveNewAlternative,
+    saveCurrentAlternative,
     costBreakdown
   } = useBridgeStore();
 
-  const [altInputName, setAltInputName] = useState('');
+  const activeAlt = alternatives.find((a) => a.id === activeAlternativeId);
+
+  // 대안명 입력 상태: 현재 활성 대안의 이름 또는 기본 제원 이름으로 동기화
+  const [altName, setAltName] = useState(
+    activeAlt ? activeAlt.name : bridgeParams.name || `대안 ${alternatives.length + 1}`
+  );
+
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (activeAlt) {
+      setAltName(activeAlt.name);
+    } else {
+      setAltName(bridgeParams.name || `대안 ${alternatives.length + 1}`);
+    }
+  }, [activeAlternativeId, activeAlt, alternatives.length, bridgeParams.name]);
+
+  const showFeedback = (msg: string) => {
+    setSaveMessage(msg);
+    setTimeout(() => setSaveMessage(null), 3000);
+  };
+
+  // 1. 현재 대안에 저장 (값 변경 후 반영을 위한 별도 저장 버튼)
+  const handleSaveCurrent = () => {
+    const finalName = altName.trim() || `대안 ${alternatives.length || 1}`;
+    saveCurrentAlternative(finalName);
+    showFeedback(`'${finalName}'에 변경 제원이 저장·반영되었습니다.`);
+  };
+
+  // 2. 새 대안으로 저장 (현재 제원으로 새 대안 생성)
+  const handleSaveAsNew = () => {
+    const defaultNextName = `대안 ${alternatives.length + 1}`;
+    // 만약 현재 활성 대안과 같은 이름이면 새 번호 부여
+    let finalName = altName.trim();
+    if (!finalName || (activeAlt && finalName === activeAlt.name)) {
+      finalName = defaultNextName;
+    }
+    saveNewAlternative(finalName);
+    showFeedback(`'${finalName}'이(가) 새로운 대안으로 저장되었습니다.`);
+  };
+
+  // 말뚝 일괄 설정 상태
   const [batchAbutLen, setBatchAbutLen] = useState<number>(15);
   const [batchAbutCount, setBatchAbutCount] = useState<number>(40);
   const [batchPierLen, setBatchPierLen] = useState<number>(15);
   const [batchPierCount, setBatchPierCount] = useState<number>(50);
   const [batchFoundation, setBatchFoundation] = useState<FoundationType>('PILE');
-
-  const hasBasePlan = alternatives.some((a) => a.isBase);
-  const activeAlt = alternatives.find((a) => a.id === activeAlternativeId);
-
-  const handleRegisterAlternative = (isNew: boolean) => {
-    const finalName = altInputName.trim() || undefined;
-    registerCurrentAsAlternative(finalName);
-    setAltInputName('');
-  };
 
   const handleApplyBatchPiles = () => {
     applyBatchPileParams({
@@ -65,6 +96,7 @@ export const ParametricInputPanel: React.FC = () => {
       pierPileCount: batchPierCount,
       foundationType: batchFoundation
     });
+    showFeedback('모든 하부구조에 말뚝 제원이 일괄 적용되었습니다.');
   };
 
   return (
@@ -77,80 +109,12 @@ export const ParametricInputPanel: React.FC = () => {
             파라메트릭 제원 입력 패널 (SSOT)
           </h2>
           <p className="text-[11px] text-slate-500">
-            <span className="text-red-600 font-bold">빨간색 테두리</span> 필드는 시스템 원천 입력값입니다.
+            <span className="text-red-600 font-bold">빨간색 테두리</span> 필드는 시스템 원천 입력값으로 단 한 곳에서만 정의됩니다.
           </p>
         </div>
         <div className="flex items-center gap-1 bg-red-50 text-red-700 px-2 py-1 rounded text-[10px] font-bold border border-red-200">
           <ShieldAlert className="w-3 h-3 text-red-500" />
-          단일 위치 정의
-        </div>
-      </div>
-
-      {/* 🌟 대안 등록/저장 액션 툴바 (사용자 요청: 현재 설계를 새 대안으로 저장) */}
-      <div className="p-3 bg-gradient-to-r from-slate-900 to-indigo-950 text-white border-b border-slate-200 space-y-2">
-        <div className="flex items-center justify-between text-xs">
-          <div className="flex items-center gap-1.5 font-bold">
-            <BookmarkPlus className="w-4 h-4 text-amber-400" />
-            <span>설계 대안 등록 및 저장</span>
-            {activeAlt ? (
-              <span className="px-2 py-0.5 rounded-full text-[10px] bg-indigo-700/80 text-indigo-100 border border-indigo-500">
-                편집 중: {activeAlt.name}
-              </span>
-            ) : (
-              <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                {hasBasePlan ? '신규 설계안 (미저장)' : '원안 미등록'}
-              </span>
-            )}
-          </div>
-          <span className="text-[11px] text-slate-300 font-mono">
-            공사비: {(costBreakdown.total_construction_cost / 100000000).toFixed(1)}억원
-          </span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            value={altInputName}
-            onChange={(e) => setAltInputName(e.target.value)}
-            placeholder={
-              !hasBasePlan
-                ? '원안 명칭 (미입력시 자동)'
-                : `비교 ${alternatives.length}안 명칭 (미입력시 자동)`
-            }
-            className="flex-1 px-2.5 py-1.5 rounded-lg text-xs bg-slate-800/80 text-white border border-slate-700 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 font-medium"
-          />
-
-          {!hasBasePlan ? (
-            <button
-              onClick={() => handleRegisterAlternative(false)}
-              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white shadow-sm flex items-center gap-1 transition-all whitespace-nowrap"
-            >
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              원안으로 등록 (확정)
-            </button>
-          ) : (
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => handleRegisterAlternative(true)}
-                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm flex items-center gap-1 transition-all whitespace-nowrap"
-                title="현재 입력된 모든 제원을 새 대안으로 저장합니다."
-              >
-                <Plus className="w-3.5 h-3.5" />
-                새 대안으로 저장
-              </button>
-
-              {activeAlternativeId && (
-                <button
-                  onClick={updateCurrentAlternative}
-                  className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-700 hover:bg-slate-600 text-slate-200 border border-slate-600 shadow-sm flex items-center gap-1 transition-all whitespace-nowrap"
-                  title="현재 선택된 대안의 제원과 공사비를 덮어씁니다."
-                >
-                  <Save className="w-3.5 h-3.5" />
-                  덮어쓰기
-                </button>
-              )}
-            </div>
-          )}
+          단일 위치 정의 준수
         </div>
       </div>
 
@@ -198,18 +162,11 @@ export const ParametricInputPanel: React.FC = () => {
         </button>
       </div>
 
-      {/* Tab Contents Container */}
+      {/* Tab Contents Container (Scrollable) */}
       <div className="p-4 flex-1 overflow-y-auto space-y-4">
-        {/* 1. 기본 제원 탭 */}
+        {/* 1. 기본 제원 탭 (프로젝트명/대안명 중복 인풋 제거: 하단 및 헤더에서 단 1곳씩 정의) */}
         {activeTab === 'basic' && (
           <div className="space-y-4">
-            <SSOTInput
-              label="교량 프로젝트/설계 명칭"
-              value={bridgeParams.name}
-              onChange={(e) => updateBridgeParams({ name: e.target.value })}
-              placeholder="예: 연축교 고가차도 대안 1안"
-            />
-
             <div className="grid grid-cols-2 gap-3">
               <SSOTInput
                 label="교량 총연장 (L)"
@@ -438,7 +395,7 @@ export const ParametricInputPanel: React.FC = () => {
           </div>
         )}
 
-        {/* 4. 🌟 기초·말뚝 제원 탭 (사용자 질문/요청: 말뚝 길이와 본수 입력 및 산정 근거) */}
+        {/* 4. 기초·말뚝 제원 탭 */}
         {activeTab === 'piles' && (
           <div className="space-y-4">
             {/* 산정 근거 안내 박스 */}
@@ -536,7 +493,7 @@ export const ParametricInputPanel: React.FC = () => {
                       <span className="text-[11px] font-mono text-blue-700">
                         {abut.foundation === 'PILE'
                           ? `총연장: ${(abut.pile_len * abut.pile_count).toLocaleString()}m (${Math.round((abut.pile_len * abut.pile_count * (PILE_UNIT_PRICES[bridgeParams.pile_method]?.unitRate || 245000)) / 1000000)}백만원)`
-                          : abut.foundation === 'DIRECT' ? '직접기초 (말뚝공사비 없음)' : '매스콘크리트'}
+                          : abut.foundation === 'DIRECT' ? '직접기초 (말뚝공비 없음)' : '매스콘크리트'}
                       </span>
                     </div>
 
@@ -598,7 +555,7 @@ export const ParametricInputPanel: React.FC = () => {
                       <span className="text-[11px] font-mono text-blue-700">
                         {pier.foundation === 'PILE'
                           ? `총연장: ${(pier.pile_len * pier.pile_count).toLocaleString()}m (${Math.round((pier.pile_len * pier.pile_count * (PILE_UNIT_PRICES[bridgeParams.pile_method]?.unitRate || 245000)) / 1000000)}백만원)`
-                          : pier.foundation === 'DIRECT' ? '직접기초 (말뚝공사비 없음)' : '매스콘크리트'}
+                          : pier.foundation === 'DIRECT' ? '직접기초 (말뚝공비 없음)' : '매스콘크리트'}
                       </span>
                     </div>
 
@@ -678,6 +635,59 @@ export const ParametricInputPanel: React.FC = () => {
             </div>
           </div>
         )}
+      </div>
+
+      {/* 🌟 4. 입력된 제원 아래 '새 대안으로 저장' 및 '저장' 버튼 영역 (사용자 요구사항 1~4 완벽 부합) */}
+      <div className="p-3 bg-slate-50 border-t border-slate-200 space-y-2.5 shrink-0">
+        {/* 알림 메시지 */}
+        {saveMessage && (
+          <div className="flex items-center gap-1.5 p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-800 animate-fadeIn">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{saveMessage}</span>
+          </div>
+        )}
+
+        <div className="space-y-1">
+          {/* 대안명 단일 입력 필드 (SSOT Red: 시스템 전체에서 대안명은 오직 여기서만 입력!) */}
+          <SSOTInput
+            label="대안 명칭 (단일 정의 SSOT)"
+            value={altName}
+            onChange={(e) => {
+              setAltName(e.target.value);
+              updateBridgeParams({ name: e.target.value });
+            }}
+            placeholder={`예: 대안 ${alternatives.length || 1} (PSC 빔교)`}
+            helperText="현재 제원의 명칭을 지정합니다. 변경 후 아래 [저장]을 눌러야 반영됩니다."
+          />
+        </div>
+
+        {/* 액션 버튼 군 */}
+        <div className="flex items-center gap-2 pt-1">
+          {/* 1. 저장 버튼: 현재 선택된 대안에 수정된 제원과 대안명을 반영하여 저장 */}
+          <button
+            onClick={handleSaveCurrent}
+            className="flex-1 py-2 px-3 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm flex items-center justify-center gap-1.5 transition-all"
+            title="현재 선택된 대안에 위에서 수정한 제원과 이름을 저장·반영합니다."
+          >
+            <Save className="w-4 h-4" />
+            <span>{activeAlt ? `'${activeAlt.name}' 변경사항 저장` : '현재 제원 저장'}</span>
+          </button>
+
+          {/* 2. 새 대안으로 저장: 현재 제원으로 새로운 대안을 추가 생성하여 저장 */}
+          <button
+            onClick={handleSaveAsNew}
+            className="py-2 px-3.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm flex items-center justify-center gap-1.5 transition-all whitespace-nowrap"
+            title="현재 입력된 제원으로 새 대안을 생성하여 보관합니다."
+          >
+            <FolderPlus className="w-4 h-4" />
+            <span>새 대안으로 저장</span>
+          </button>
+        </div>
+
+        <div className="flex items-center justify-between text-[11px] text-slate-500 pt-0.5">
+          <span>현재 산출 총공사비: <strong className="text-slate-800 font-mono">{(costBreakdown.total_construction_cost / 100000000).toFixed(1)}억원</strong></span>
+          <span className="text-[10px] text-slate-400">등록된 대안: {alternatives.length}개</span>
+        </div>
       </div>
     </div>
   );

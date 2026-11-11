@@ -47,7 +47,10 @@ interface BridgeStoreState {
     foundationType?: 'DIRECT' | 'PILE' | 'MASS_CONCRETE';
   }) => void;
 
-  // 대안 관리 액션 (원안 및 비교안 등록/추가)
+  // 대안 관리 액션 (원안/대안 구분 없음: 대안 1, 대안 2, ... 동등 비교)
+  saveNewAlternative: (name?: string) => void;
+  saveCurrentAlternative: (name?: string) => void;
+  updateAlternativeName: (id: string, name: string) => void;
   registerCurrentAsAlternative: (name?: string) => void;
   updateCurrentAlternative: () => void;
   saveCurrentAsAlternative: (name: string, color?: string) => void;
@@ -293,12 +296,10 @@ export const useBridgeStore = create<BridgeStoreState>((set, get) => ({
     });
   },
 
-  registerCurrentAsAlternative: (customName) => {
+  saveNewAlternative: (customName) => {
     set((state) => {
-      const isBase = state.alternatives.length === 0;
-      const defaultName = isBase
-        ? '원안 (기본 계획안)'
-        : `비교 ${state.alternatives.length}안`;
+      const nextIndex = state.alternatives.length + 1;
+      const defaultName = `대안 ${nextIndex}`;
       const name = (customName && customName.trim()) || state.bridgeParams.name || defaultName;
 
       const newId = `alt_${Date.now()}`;
@@ -307,8 +308,8 @@ export const useBridgeStore = create<BridgeStoreState>((set, get) => ({
       paramsCopy.name = name;
       const breakdown = calculateBridgeCost(paramsCopy);
 
-      const colorPalette = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4'];
-      const color = isBase ? '#3B82F6' : colorPalette[state.alternatives.length % colorPalette.length];
+      const colorPalette = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4', '#64748B'];
+      const color = colorPalette[state.alternatives.length % colorPalette.length];
 
       const newAlt: AlternativeScenario = {
         id: newId,
@@ -316,7 +317,7 @@ export const useBridgeStore = create<BridgeStoreState>((set, get) => ({
         bridgeParams: paramsCopy,
         costBreakdown: breakdown,
         color,
-        isBase
+        isBase: false
       };
 
       return {
@@ -328,31 +329,65 @@ export const useBridgeStore = create<BridgeStoreState>((set, get) => ({
     });
   },
 
-  updateCurrentAlternative: () => {
+  saveCurrentAlternative: (customName) => {
+    const state = get();
+    if (!state.activeAlternativeId || state.alternatives.length === 0) {
+      get().saveNewAlternative(customName);
+      return;
+    }
+
     set((state) => {
-      if (!state.activeAlternativeId) return state;
       const currentIdx = state.alternatives.findIndex((a) => a.id === state.activeAlternativeId);
-      if (currentIdx === -1) return state;
+      if (currentIdx === -1) {
+        return state;
+      }
 
       const paramsCopy = JSON.parse(JSON.stringify(state.bridgeParams));
+      if (customName && customName.trim()) {
+        paramsCopy.name = customName.trim();
+      }
       const breakdown = calculateBridgeCost(paramsCopy);
 
       const updatedAlts = [...state.alternatives];
       updatedAlts[currentIdx] = {
         ...updatedAlts[currentIdx],
+        name: paramsCopy.name || updatedAlts[currentIdx].name,
         bridgeParams: paramsCopy,
         costBreakdown: breakdown
       };
 
       return {
         alternatives: updatedAlts,
+        bridgeParams: paramsCopy,
         costBreakdown: breakdown
       };
     });
   },
 
+  updateAlternativeName: (id, name) => {
+    set((state) => {
+      const updatedAlts = state.alternatives.map((a) => (a.id === id ? { ...a, name } : a));
+      let updatedParams = state.bridgeParams;
+      if (state.activeAlternativeId === id) {
+        updatedParams = { ...state.bridgeParams, name };
+      }
+      return {
+        alternatives: updatedAlts,
+        bridgeParams: updatedParams
+      };
+    });
+  },
+
+  registerCurrentAsAlternative: (customName) => {
+    get().saveNewAlternative(customName);
+  },
+
+  updateCurrentAlternative: () => {
+    get().saveCurrentAlternative();
+  },
+
   saveCurrentAsAlternative: (name, color = '#6366F1') => {
-    get().registerCurrentAsAlternative(name);
+    get().saveNewAlternative(name);
   },
 
   loadAlternative: (id) => {
