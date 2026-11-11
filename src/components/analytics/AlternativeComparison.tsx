@@ -11,20 +11,22 @@ import {
   Legend,
   ResponsiveContainer
 } from 'recharts';
-import { CheckCircle, TrendingUp, DollarSign, Layers, Edit2, ArrowRight } from 'lucide-react';
+import { TrendingUp, DollarSign, Layers, Edit2, ArrowRight, Award, CheckCircle2, BookmarkPlus } from 'lucide-react';
 
 export const AlternativeComparison: React.FC = () => {
   const {
     alternatives,
     activeAlternativeId,
-    loadAlternative,
     deleteAlternative,
     updateAlternativeName,
+    customBenchmarks,
+    addBenchmarkFromAlternative,
     setViewMode
   } = useBridgeStore();
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
+  const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
 
   const startRename = (id: string, currentName: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -37,6 +39,12 @@ export const AlternativeComparison: React.FC = () => {
       updateAlternativeName(id, editingName.trim());
     }
     setEditingId(null);
+  };
+
+  const handleAddBenchmark = (altId: string, altName: string) => {
+    addBenchmarkFromAlternative(altId);
+    setFeedbackMsg(`'${altName}' 대안이 [실적 벤치마크]에 성공적으로 추가되었습니다.`);
+    setTimeout(() => setFeedbackMsg(null), 3500);
   };
 
   // 1. Recharts 총공사비 비교 데이터셋 구성
@@ -77,7 +85,7 @@ export const AlternativeComparison: React.FC = () => {
             고속도로 교량 계획 대안별 공사비 및 경제성 비교 분석
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            등록된 {alternatives.length}개 대안 간의 총공사비, ㎡당 단가, 공종별 원가 구조를 상호 비교합니다.
+            등록된 {alternatives.length}개 대안 간의 총공사비, ㎡당 단가, 공종별 원가 구조를 다차원 비교 분석합니다.
           </p>
         </div>
         <button
@@ -88,6 +96,22 @@ export const AlternativeComparison: React.FC = () => {
           <ArrowRight className="w-4 h-4" />
         </button>
       </div>
+
+      {/* 벤치마크 추가 성공 알림 */}
+      {feedbackMsg && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-bold text-emerald-800 flex items-center justify-between shadow-2xs animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{feedbackMsg}</span>
+          </div>
+          <button
+            onClick={() => setViewMode('BENCHMARK')}
+            className="text-xs underline text-emerald-700 hover:text-emerald-900 ml-3"
+          >
+            [실적 벤치마크] 탭에서 확인하기 →
+          </button>
+        </div>
+      )}
 
       {/* Alternative Cards Selector */}
       {alternatives.length === 0 ? (
@@ -110,75 +134,7 @@ export const AlternativeComparison: React.FC = () => {
         </div>
       ) : (
         <>
-          {/* 대안 카드 목록 */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-            {alternatives.map((alt, idx) => {
-              const isActive = alt.id === activeAlternativeId;
-              const totalCostBillion = (alt.costBreakdown.total_construction_cost / 100000000).toFixed(2);
-              const unitCostMan = Math.round(alt.costBreakdown.unit_cost_per_m2 / 10000);
-              const deltaPct = idx === 0 ? '0' : (((alt.costBreakdown.total_construction_cost - baseTotalCost) / baseTotalCost) * 100).toFixed(1);
-
-              return (
-                <div
-                  key={alt.id}
-                  onClick={() => loadAlternative(alt.id)}
-                  className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
-                    isActive
-                      ? 'border-indigo-600 bg-indigo-50/40 shadow-md ring-2 ring-indigo-500/20'
-                      : 'border-slate-200 bg-white hover:border-slate-300 shadow-xs'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-1.5">
-                    {editingId === alt.id ? (
-                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="text"
-                          value={editingName}
-                          onChange={(e) => setEditingName(e.target.value)}
-                          onKeyDown={(e) => e.key === 'Enter' && submitRename(alt.id)}
-                          onBlur={() => submitRename(alt.id)}
-                          autoFocus
-                          className="px-1.5 py-0.5 text-xs font-bold border border-indigo-500 rounded bg-white w-28"
-                        />
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1 truncate max-w-[150px]">
-                        <span className="text-xs font-bold text-slate-900 truncate">{alt.name}</span>
-                        <button
-                          onClick={(e) => startRename(alt.id, alt.name, e)}
-                          className="p-0.5 text-slate-400 hover:text-indigo-600"
-                          title="대안 명칭 변경"
-                        >
-                          <Edit2 className="w-3 h-3" />
-                        </button>
-                      </div>
-                    )}
-
-                    {isActive && (
-                      <span className="flex items-center gap-0.5 text-[10px] font-bold text-indigo-700 bg-indigo-100 px-1.5 py-0.5 rounded shrink-0">
-                        <CheckCircle className="w-3 h-3 text-indigo-600" />
-                        선택됨
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-lg font-extrabold text-indigo-700 tracking-tight">{totalCostBillion}</span>
-                    <span className="text-xs font-semibold text-slate-600">억원</span>
-                  </div>
-
-                  <div className="flex items-center justify-between text-[11px] text-slate-500 mt-2 pt-2 border-t border-slate-100">
-                    <span>{unitCostMan} 만원/㎡</span>
-                    {idx > 0 && (
-                      <span className={`font-bold ${parseFloat(deltaPct) > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                        {parseFloat(deltaPct) > 0 ? `+${deltaPct}%` : `${deltaPct}%`}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          {/* 🌟 2. 그래프 위 중복 대안 선택 카드 삭제 완료 -> 시원하게 비교 차트가 최상단에 바로 배치됨 */}
 
           {/* Charts Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -234,11 +190,14 @@ export const AlternativeComparison: React.FC = () => {
             </div>
           </div>
 
-          {/* Detailed Alternative Comparison Matrix Table */}
+          {/* 🌟 3. 상세 비교 매트릭스 테이블 (관리 열: 벤치마크 추가 + 삭제) */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="p-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-900">대안별 상세 경제성 및 규격 비교 매트릭스</h3>
-              <span className="text-xs text-slate-500">REV.04 표준 적산 공식 적용</span>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">대안별 상세 경제성 및 규격 비교 매트릭스</h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">우측 관리 항목에서 대안을 <strong>'실적 벤치마크'</strong>에 등록하거나 삭제할 수 있습니다.</p>
+              </div>
+              <span className="text-xs text-slate-500 font-semibold">REV.04 표준 적산 공식 적용</span>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs text-left">
@@ -251,7 +210,7 @@ export const AlternativeComparison: React.FC = () => {
                     <th className="py-2.5 px-3 text-right">총공사비</th>
                     <th className="py-2.5 px-3 text-right">㎡당 단가</th>
                     <th className="py-2.5 px-3 text-center">상대 차이</th>
-                    <th className="py-2.5 px-3 text-center">관리</th>
+                    <th className="py-2.5 px-3 text-center">관리 (벤치마크/삭제)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
@@ -262,10 +221,14 @@ export const AlternativeComparison: React.FC = () => {
                     const deltaPct = idx === 0 ? '-' : `${(((alt.costBreakdown.total_construction_cost - baseTotalCost) / baseTotalCost) * 100).toFixed(1)}%`;
                     const isSelected = alt.id === activeAlternativeId;
 
+                    const isAlreadyBenchmark = customBenchmarks.some(
+                      (cb) => cb.id === `bm_${alt.id}` || cb.name === `[실적] ${alt.name}`
+                    );
+
                     return (
-                      <tr key={alt.id} className={`hover:bg-slate-50 ${isSelected ? 'bg-indigo-50/30' : ''}`}>
+                      <tr key={alt.id} className={`hover:bg-slate-50 transition-colors ${isSelected ? 'bg-indigo-50/30' : ''}`}>
                         <td className="py-2.5 px-3 font-bold text-slate-900 flex items-center gap-1.5">
-                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: alt.color }}></span>
+                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: alt.color }}></span>
                           {editingId === alt.id ? (
                             <input
                               type="text"
@@ -281,7 +244,7 @@ export const AlternativeComparison: React.FC = () => {
                               {alt.name}
                               <button
                                 onClick={(e) => startRename(alt.id, alt.name, e)}
-                                className="text-slate-400 hover:text-indigo-600"
+                                className="text-slate-400 hover:text-indigo-600 p-0.5"
                                 title="이름 수정"
                               >
                                 <Edit2 className="w-3 h-3" />
@@ -314,16 +277,36 @@ export const AlternativeComparison: React.FC = () => {
                           )}
                         </td>
                         <td className="py-2.5 px-3 text-center">
-                          <button
-                            onClick={() => {
-                              if (confirm(`'${alt.name}' 대안을 삭제하시겠습니까?`)) {
-                                deleteAlternative(alt.id);
-                              }
-                            }}
-                            className="text-red-500 hover:text-red-700 font-bold text-[11px]"
-                          >
-                            삭제
-                          </button>
+                          <div className="flex items-center justify-center gap-1.5">
+                            {/* 벤치마크 추가 버튼 */}
+                            {isAlreadyBenchmark ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-emerald-700 bg-emerald-50 rounded border border-emerald-200">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                벤치마크 등록됨
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => handleAddBenchmark(alt.id, alt.name)}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 rounded border border-amber-300 transition-all shadow-2xs"
+                                title="이 대안을 실적 벤치마크에 등록하여 언제든 레퍼런스로 참조할 수 있습니다."
+                              >
+                                <BookmarkPlus className="w-3 h-3 text-amber-600" />
+                                벤치마크 추가
+                              </button>
+                            )}
+
+                            {/* 삭제 버튼 */}
+                            <button
+                              onClick={() => {
+                                if (confirm(`'${alt.name}' 대안을 삭제하시겠습니까?`)) {
+                                  deleteAlternative(alt.id);
+                                }
+                              }}
+                              className="text-red-500 hover:text-red-700 font-bold text-[11px] px-1 py-0.5 hover:bg-red-50 rounded transition-colors"
+                            >
+                              삭제
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );

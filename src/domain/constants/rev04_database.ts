@@ -458,6 +458,7 @@ export interface BenchmarkItem {
   referenceTotalCostBillion: number; // 억원
   referenceUnitCostPerM2TenThousand: number; // 만원/m2
   description: string;
+  isCustom?: boolean;
 }
 
 export const PRESET_BENCHMARKS: BenchmarkItem[] = [

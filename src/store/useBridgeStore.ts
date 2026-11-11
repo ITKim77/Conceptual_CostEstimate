@@ -11,7 +11,7 @@ import {
   SuperstructureType
 } from '../domain/models/bridge';
 import { calculateBridgeCost } from '../domain/engine/cost_calculator';
-import { PRESET_BENCHMARKS } from '../domain/constants/rev04_database';
+import { PRESET_BENCHMARKS, BenchmarkItem } from '../domain/constants/rev04_database';
 
 interface BridgeStoreState {
   // 1. [Red] 원천 사용자 입력 상태 (SSOT)
@@ -19,6 +19,7 @@ interface BridgeStoreState {
   bridgeParams: BridgeParameters;
   activeAlternativeId: string | null;
   alternatives: AlternativeScenario[];
+  customBenchmarks: BenchmarkItem[];
   
   // 2. [Blue] 연산 및 인용 파생 상태 (Read-Only)
   costBreakdown: CostBreakdown;
@@ -58,6 +59,7 @@ interface BridgeStoreState {
   deleteAlternative: (id: string) => void;
   loadBenchmarkPreset: (benchmarkId: string) => void;
   loadAllBenchmarks: () => void;
+  addBenchmarkFromAlternative: (altId: string) => void;
   resetToInitialState: () => void;
 
   // UI 상태 액션
@@ -104,7 +106,8 @@ export function createDefaultCleanState() {
     projectName: '',
     bridgeParams: baseParams,
     activeAlternativeId: null as string | null,
-    alternatives: [] as AlternativeScenario[], // 원안도 등록되지 않은 완전 클린 상태!
+    alternatives: [] as AlternativeScenario[],
+    customBenchmarks: [] as BenchmarkItem[],
     costBreakdown: baseBreakdown,
     selectedViewMode: '3D' as const,
     cameraPreset: 'iso' as const,
@@ -422,7 +425,8 @@ export const useBridgeStore = create<BridgeStoreState>((set, get) => ({
   },
 
   loadBenchmarkPreset: (benchmarkId) => {
-    const bm = PRESET_BENCHMARKS.find((b) => b.id === benchmarkId);
+    const allBm = [...PRESET_BENCHMARKS, ...get().customBenchmarks];
+    const bm = allBm.find((b) => b.id === benchmarkId);
     if (!bm) return;
     const paramsCopy = JSON.parse(JSON.stringify(bm.bridgeParams));
     const breakdown = calculateBridgeCost(paramsCopy);
@@ -470,6 +474,38 @@ export const useBridgeStore = create<BridgeStoreState>((set, get) => ({
       activeAlternativeId: benchmarkAlts[0].id,
       bridgeParams: JSON.parse(JSON.stringify(benchmarkAlts[0].bridgeParams)),
       costBreakdown: calculateBridgeCost(benchmarkAlts[0].bridgeParams)
+    });
+  },
+
+  addBenchmarkFromAlternative: (altId) => {
+    set((state) => {
+      const targetAlt = state.alternatives.find((a) => a.id === altId);
+      if (!targetAlt) return state;
+
+      const exists = state.customBenchmarks.some(
+        (cb) => cb.id === `bm_${targetAlt.id}` || cb.name === `[실적] ${targetAlt.name}`
+      );
+      if (exists) return state;
+
+      const directBillion = Math.round((targetAlt.costBreakdown.direct_cost_total / 100000000) * 100) / 100;
+      const totalBillion = Math.round((targetAlt.costBreakdown.total_construction_cost / 100000000) * 100) / 100;
+      const unitCostTenThousand = Math.round(targetAlt.costBreakdown.unit_cost_per_m2 / 10000);
+
+      const newBenchmark: BenchmarkItem = {
+        id: `bm_${targetAlt.id}`,
+        name: `[실적] ${targetAlt.name}`,
+        location: state.projectName || '계획 프로젝트',
+        referenceDirectCostBillion: directBillion,
+        referenceTotalCostBillion: totalBillion,
+        referenceUnitCostPerM2TenThousand: unitCostTenThousand,
+        description: `L=${targetAlt.bridgeParams.bridge_length}m, B=${targetAlt.bridgeParams.bridge_width}m (${targetAlt.bridgeParams.spans.length}경간 ${targetAlt.bridgeParams.spans[0]?.type || ''})`,
+        bridgeParams: JSON.parse(JSON.stringify(targetAlt.bridgeParams)),
+        isCustom: true
+      };
+
+      return {
+        customBenchmarks: [...state.customBenchmarks, newBenchmark]
+      };
     });
   },
 
