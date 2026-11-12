@@ -357,7 +357,8 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
     const zSpan = realTerrain ? realTerrain.depthMeters : Math.round(xSpan * 0.72);
     const xStart = totalBridgeLen / 2 - xSpan / 2;
 
-    const skewRad = ((bridgeParams.skew_angle || 0) * Math.PI) / 180;
+    const clampedSkewDeg = Math.max(-60, Math.min(60, bridgeParams.skew_angle || 0));
+    const skewRad = (clampedSkewDeg * Math.PI) / 180;
 
     // 🌟 SSOT 실측 지반고 함수 (이중선형 보간 + 사용자 수직 스케일 반영)
     const getActualGroundY = (x: number, z: number = 0): number => {
@@ -505,7 +506,7 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
       lampGlow: new THREE.MeshBasicMaterial({ color: 0xFEF08A, wireframe })
     };
 
-    buildHighLodSuperstructure(bGroup, spans, bridge_width, totalBridgeLen, evaluator, mats, showPiles);
+    buildHighLodSuperstructure(bGroup, spans, bridge_width, totalBridgeLen, evaluator, mats, showPiles, skewRad);
 
     // =========================================================================
     // 3. 고(高)LOD 교대 (A1 & A2) 빌드 (실측 곡선 끝단 위치 + 사각 + 날개벽 + 교좌부)

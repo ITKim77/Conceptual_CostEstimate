@@ -286,15 +286,15 @@ export const ParametricInputPanel: React.FC = () => {
                     label="교량 사각 (Skew Angle)"
                     unit="도 (°)"
                     type="number"
-                    min="0"
+                    min="-60"
                     max="60"
                     step="1"
                     value={bridgeParams.skew_angle}
                     onChange={(e) => {
-                      const val = parseFloat(e.target.value) || 0;
-                      updateBridgeParams({ skew_angle: val });
+                      const val = parseFloat(e.target.value);
+                      updateBridgeParams({ skew_angle: Number.isFinite(val) ? val : 0 });
                     }}
-                    helperText="교각/교대 배치 사각"
+                    helperText="양(+)·음(-) 회전방향 사각 지원 (-60° ~ +60°)"
                   />
                 </div>
 
@@ -384,12 +384,15 @@ export const ParametricInputPanel: React.FC = () => {
                 label="교량 사각 (Skew Angle)"
                 unit="도 (°)"
                 type="number"
-                min="0"
+                min="-60"
                 max="60"
                 step="1"
                 value={bridgeParams.skew_angle}
-                onChange={(e) => updateBridgeParams({ skew_angle: parseFloat(e.target.value) || 0 })}
-                helperText="20도 이상 시 상부공 4% 할증 자동"
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value);
+                  updateBridgeParams({ skew_angle: Number.isFinite(val) ? val : 0 });
+                }}
+                helperText="±20° 이상 시 상부공 4% 할증 (-60°~+60°)"
               />
               <SSOTInput
                 label="간접비/제잡비율"

@@ -121,10 +121,11 @@ export function calculateBridgeCost(params: BridgeParameters): CostBreakdown {
   const bridgeLength = params.bridge_length || totalLength;
   const totalDeckArea = bridgeLength * params.bridge_width;
 
-  // 사각(Skew) 보정: 20도 이상 시 상부공 4% 할증
-  const skewRad = (params.skew_angle * Math.PI) / 180;
-  const skewMultiplier = params.skew_angle >= 20 ? 1.04 : 1.0;
-  const skewWidthMultiplier = Math.cos(skewRad) > 0 ? (1 / Math.cos(skewRad)) : 1.0;
+  // 사각(Skew) 보정: 절대값 기준 20도 이상 시 상부공 4% 할증 (좌/우 ± 사각 동일 적용)
+  const absSkewDeg = Math.abs(params.skew_angle || 0);
+  const skewRad = (absSkewDeg * Math.PI) / 180;
+  const skewMultiplier = absSkewDeg >= 20 ? 1.04 : 1.0;
+  const skewWidthMultiplier = Math.cos(skewRad) > 0.2 ? (1 / Math.cos(skewRad)) : 1.0;
 
   // 1. 상부공 산출
   let superstructureCost = 0;
@@ -155,7 +156,7 @@ export function calculateBridgeCost(params: BridgeParameters): CostBreakdown {
 
   // 2. 교대공 산출
   let abutmentCost = 0;
-  const effectiveAbutmentWidth = params.bridge_width * (params.skew_angle > 0 ? skewWidthMultiplier : 1.0);
+  const effectiveAbutmentWidth = params.bridge_width * (absSkewDeg > 0 ? skewWidthMultiplier : 1.0);
   params.abutments.forEach(abut => {
     abutmentCost += calculateAbutmentCost(abut.height, effectiveAbutmentWidth);
   });

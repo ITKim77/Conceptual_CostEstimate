@@ -42,7 +42,7 @@ export function createAlignmentEvaluator(
   const maxBankRad = absR > 0 ? Math.min(0.06, 45 / absR) * curveSign : 0;
 
   return (station: number): AlignmentSample => {
-    const s = Math.max(0, Math.min(L, station));
+    const s = station; // 사각 단부(z * tan(skew)) 확장을 위해 0~L 외부 측점도 연속 평가
     const ds = s - L / 2;
     const y = (alignment.start_elevation ?? DEFAULT_ALIGNMENT.start_elevation) + verticalLift + s * slopeRatio;
 
@@ -70,7 +70,7 @@ export function createAlignmentEvaluator(
     ).normalize();
 
     // 시·종점 완화구간 (0~15%, 85~100%) 편경사 보간
-    const u = s / L;
+    const u = Math.max(0, Math.min(1, s / L));
     const rampFactor =
       u < 0.15 ? u / 0.15 : u > 0.85 ? (1 - u) / 0.15 : 1.0;
     const bankRad = maxBankRad * rampFactor;
@@ -124,6 +124,7 @@ function ensureOutwardProfileWinding(points: Array<[number, number]>): Array<[nu
 export interface SweptProfileOptions {
   offsetY?: number;
   offsetZ?: number;
+  skewTan?: number; // tan(skewRad): 상부구조 단면·거더 시종점을 사각에 맞춰 종방향 시프트
   depthScaleFn?: (station: number) => number; // y < pivotY 인 하단 좌표를 스케일 (변단면 헌치 구현)
   pivotY?: number;
   closedCaps?: boolean;
@@ -132,7 +133,7 @@ export interface SweptProfileOptions {
 
 /**
  * 3D 도로 선형 프레임(Tangent, Right, Up)을 따라 2D 구조 단면 [y, z]를 연속 스위핑하여
- * 곡선·종단경사·편경사·변단면(Haunch)을 100% 반영한 고품질 BIM BufferGeometry 생성
+ * 곡선·종단경사·편경사·사각(Skew)·변단면(Haunch)을 100% 반영한 고품질 BIM BufferGeometry 생성
  */
 export function createSweptProfileGeometry(
   rawProfileYZ: Array<[number, number]>,
@@ -143,6 +144,7 @@ export function createSweptProfileGeometry(
   const {
     offsetY = 0,
     offsetZ = 0,
+    skewTan = 0,
     depthScaleFn,
     pivotY = 0,
     closedCaps = true,
@@ -160,13 +162,16 @@ export function createSweptProfileGeometry(
     return new THREE.BufferGeometry();
   }
 
-  const samples = stations.map((s) => evaluator(s));
-  const rings: THREE.Vector3[][] = samples.map((sample) => {
-    const dScale = depthScaleFn ? depthScaleFn(sample.station) : 1.0;
+  const hasSkew = Math.abs(skewTan) > 1e-6;
+  const rings: THREE.Vector3[][] = stations.map((baseStation) => {
+    const baseSample = hasSkew ? null : evaluator(baseStation);
     return profile.map(([py, pz]) => {
+      const lz = pz + offsetZ;
+      const effStation = hasSkew ? baseStation + lz * skewTan : baseStation;
+      const sample = baseSample ?? evaluator(effStation);
+      const dScale = depthScaleFn ? depthScaleFn(effStation) : 1.0;
       const yScaled = py < pivotY ? pivotY + (py - pivotY) * dScale : py;
       const ly = yScaled + offsetY;
-      const lz = pz + offsetZ;
       return sample.position
         .clone()
         .addScaledVector(sample.up, ly)
@@ -245,7 +250,7 @@ export function createSweptProfileGeometry(
 }
 
 /**
- * 선형을 따라 아스팔트 포장면 등 도로 횡단 리본 지오메트리 생성 (차선 UV 매핑용)
+ * 선형을 따라 아스팔트 포장면 등 도로 횡단 리본 지오메트리 생성 (차선 UV 및 사각 단부 정합 지원)
  */
 export function createSweptRibbonGeometry(
   zLeft: number,
@@ -253,35 +258,43 @@ export function createSweptRibbonGeometry(
   yOffset: number,
   stations: number[],
   evaluator: AlignmentEvaluator,
-  repeatLengthMeters: number = 14
+  repeatLengthMeters: number = 14,
+  skewTan: number = 0
 ): THREE.BufferGeometry {
   const positions: number[] = [];
   const uvs: number[] = [];
   if (stations.length < 2) return new THREE.BufferGeometry();
 
-  const samples = stations.map((s) => evaluator(s));
+  const hasSkew = Math.abs(skewTan) > 1e-6;
   const s0 = stations[0];
 
-  for (let k = 0; k < samples.length - 1; k++) {
-    const a = samples[k];
-    const b = samples[k + 1];
+  const corners = stations.map((st) => {
+    const sL = hasSkew ? st + zLeft * skewTan : st;
+    const sR = hasSkew ? st + zRight * skewTan : st;
+    const sampleL = evaluator(sL);
+    const sampleR = hasSkew ? evaluator(sR) : sampleL;
+    return {
+      station: st,
+      ptL: sampleL.position.clone().addScaledVector(sampleL.up, yOffset).addScaledVector(sampleL.right, zLeft),
+      ptR: sampleR.position.clone().addScaledVector(sampleR.up, yOffset).addScaledVector(sampleR.right, zRight)
+    };
+  });
 
-    const aL = a.position.clone().addScaledVector(a.up, yOffset).addScaledVector(a.right, zLeft);
-    const aR = a.position.clone().addScaledVector(a.up, yOffset).addScaledVector(a.right, zRight);
-    const bL = b.position.clone().addScaledVector(b.up, yOffset).addScaledVector(b.right, zLeft);
-    const bR = b.position.clone().addScaledVector(b.up, yOffset).addScaledVector(b.right, zRight);
+  for (let k = 0; k < corners.length - 1; k++) {
+    const a = corners[k];
+    const b = corners[k + 1];
 
     const v0 = (a.station - s0) / repeatLengthMeters;
     const v1 = (b.station - s0) / repeatLengthMeters;
 
     // (+tangent) x (-Z) = +Y 이므로 (aR, bR, aL) / (bR, bL, aL) -> 법선 +Up
     positions.push(
-      aR.x, aR.y, aR.z,
-      bR.x, bR.y, bR.z,
-      aL.x, aL.y, aL.z,
-      bR.x, bR.y, bR.z,
-      bL.x, bL.y, bL.z,
-      aL.x, aL.y, aL.z
+      a.ptR.x, a.ptR.y, a.ptR.z,
+      b.ptR.x, b.ptR.y, b.ptR.z,
+      a.ptL.x, a.ptL.y, a.ptL.z,
+      b.ptR.x, b.ptR.y, b.ptR.z,
+      b.ptL.x, b.ptL.y, b.ptL.z,
+      a.ptL.x, a.ptL.y, a.ptL.z
     );
 
     uvs.push(

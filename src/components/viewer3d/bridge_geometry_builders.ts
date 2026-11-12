@@ -177,9 +177,22 @@ export function buildHighLodSuperstructure(
   totalLength: number,
   evaluator: AlignmentEvaluator,
   mats: BridgeMaterialSet,
-  showPiles: boolean
+  showPiles: boolean,
+  skewRad: number = 0
 ): void {
   void showPiles;
+  const clampedSkew = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, skewRad || 0));
+  const skewTan = Math.tan(clampedSkew);
+  const cosSkew = Math.max(0.5, Math.cos(clampedSkew));
+  const applySkewBasis = (mesh: THREE.Object3D, pt: ReturnType<AlignmentEvaluator>) => {
+    const c = Math.cos(clampedSkew);
+    const s = Math.sin(clampedSkew);
+    const tSkew = pt.tangent.clone().multiplyScalar(c).addScaledVector(pt.right, -s).normalize();
+    const rSkew = pt.tangent.clone().multiplyScalar(s).addScaledVector(pt.right, c).normalize();
+    const uSkew = new THREE.Vector3().crossVectors(rSkew, tSkew).normalize();
+    mesh.setRotationFromMatrix(new THREE.Matrix4().makeBasis(tSkew, uSkew, rSkew));
+  };
+
   const B = Math.max(8, bridgeWidth);
   const halfB = B / 2;
   const fullStations = generateStationSamples(0, totalLength, 3.5);
@@ -188,7 +201,7 @@ export function buildHighLodSuperstructure(
   const overhangDrop = 0.18;
   const cantileverStartZ = halfB * 0.72;
 
-  // 1. 캔틸레버 헌치 바닥판 (Deck Slab with sloped overhangs)
+  // 1. 캔틸레버 헌치 바닥판 (Deck Slab with sloped overhangs + 사각 단부 보정)
   const deckProfile: Array<[number, number]> = [
     [0.05, halfB],
     [0.05, -halfB],
@@ -198,7 +211,10 @@ export function buildHighLodSuperstructure(
     [-overhangDrop, halfB]
   ];
   const deckMesh = new THREE.Mesh(
-    createSweptProfileGeometry(deckProfile, fullStations, evaluator, { uvLengthScale: 8 }),
+    createSweptProfileGeometry(deckProfile, fullStations, evaluator, {
+      uvLengthScale: 8,
+      skewTan
+    }),
     mats.concrete
   );
   deckMesh.castShadow = true;
@@ -213,7 +229,8 @@ export function buildHighLodSuperstructure(
     0.09,
     fullStations,
     evaluator,
-    14
+    14,
+    skewTan
   );
   const paveMesh = new THREE.Mesh(paveGeo, mats.asphalt);
   paveMesh.receiveShadow = true;
@@ -230,7 +247,8 @@ export function buildHighLodSuperstructure(
   ];
   const barrierRight = new THREE.Mesh(
     createSweptProfileGeometry(barrierProfile, fullStations, evaluator, {
-      offsetZ: halfB - 0.22
+      offsetZ: halfB - 0.22,
+      skewTan
     }),
     mats.concrete
   );
@@ -240,7 +258,8 @@ export function buildHighLodSuperstructure(
   const barrierLeftProfile: Array<[number, number]> = barrierProfile.map(([y, z]) => [y, -z]);
   const barrierLeft = new THREE.Mesh(
     createSweptProfileGeometry(barrierLeftProfile, fullStations, evaluator, {
-      offsetZ: -(halfB - 0.22)
+      offsetZ: -(halfB - 0.22),
+      skewTan
     }),
     mats.concrete
   );
@@ -258,14 +277,14 @@ export function buildHighLodSuperstructure(
       [0.30, 0.24]
     ];
     const medianMesh = new THREE.Mesh(
-      createSweptProfileGeometry(medianProfile, fullStations, evaluator),
+      createSweptProfileGeometry(medianProfile, fullStations, evaluator, { skewTan }),
       mats.concrete
     );
     medianMesh.castShadow = true;
     group.add(medianMesh);
   }
 
-  // 4. 시·종점 신축이음장치 (Expansion Joints)
+  // 4. 시·종점 신축이음장치 (Expansion Joints - 사각선 평행)
   [0.25, totalLength - 0.25].forEach((sJoint) => {
     const jointStations = generateStationSamples(
       Math.max(0, sJoint - 0.2),
@@ -280,13 +299,14 @@ export function buildHighLodSuperstructure(
         [0.04, halfB - curbInset]
       ],
       jointStations,
-      evaluator
+      evaluator,
+      { skewTan }
     );
     const jointMesh = new THREE.Mesh(jointGeo, mats.concreteDark);
     group.add(jointMesh);
   });
 
-  // 5. 교량 가로등 (약 35m 간격, 선형 곡선 좌우 방호벽 상단 배치)
+  // 5. 교량 가로등 (약 35m 간격, 선형 곡선 및 사각 좌우 방호벽 상단 배치)
   const poleCount = Math.max(2, Math.floor(totalLength / 36));
   const poleGeo = new THREE.CylinderGeometry(0.08, 0.12, 6.2, 8);
   const armGeo = new THREE.BoxGeometry(0.09, 0.09, 2.2);
@@ -294,17 +314,20 @@ export function buildHighLodSuperstructure(
 
   for (let p = 0; p <= poleCount; p++) {
     const sPole = 8 + ((totalLength - 16) * p) / Math.max(1, poleCount);
-    if (sPole <= 1 || sPole >= totalLength - 1) continue;
-    const sample = evaluator(sPole);
     [-1, 1].forEach((side) => {
       // 양쪽 교대 배치 혹은 4차로 이상 양측 대칭
       if (B < 18 && (p + (side > 0 ? 1 : 0)) % 2 !== 0) return;
+
+      const zSide = side * (halfB - 0.2);
+      const sPoleSkewed = sPole + zSide * skewTan;
+      if (sPoleSkewed <= 1.2 || sPoleSkewed >= totalLength - 1.2) return;
+      const sample = evaluator(sPoleSkewed);
 
       const poleGroup = new THREE.Group();
       const basePos = sample.position
         .clone()
         .addScaledVector(sample.up, 1.1)
-        .addScaledVector(sample.right, side * (halfB - 0.2));
+        .addScaledVector(sample.right, zSide);
       poleGroup.position.copy(basePos);
       poleGroup.rotation.y = sample.yawRad;
 
@@ -351,6 +374,7 @@ export function buildHighLodSuperstructure(
 
       const boxGeo = createSweptProfileGeometry(boxProfile, spanStations, evaluator, {
         pivotY: girderTopY,
+        skewTan,
         depthScaleFn: isHaunched
           ? (s) => {
               const u = (s - startS) / Math.max(1, spanLen); // 0 ~ 1
@@ -364,7 +388,7 @@ export function buildHighLodSuperstructure(
       boxMesh.receiveShadow = true;
       group.add(boxMesh);
     } else if (cat === 'STEEL_BOX') {
-      // 다실(2~3열) 사다리꼴 강박스 거더 + 연속교 변단면 + 횡방향 격벽 프레임
+      // 다실(2~3열) 사다리꼴 강박스 거더 + 연속교 변단면 + 사각 평행 횡방향 격벽 프레임
       const boxCount = B >= 22 ? 3 : 2;
       const spacing = (B - 5.5) / Math.max(1, boxCount - 1);
       const isContinuous = sp.type.includes('CONTINUOUS');
@@ -377,6 +401,7 @@ export function buildHighLodSuperstructure(
         const boxGeo = createSweptProfileGeometry(boxProfile, spanStations, evaluator, {
           offsetZ: zOff,
           pivotY: girderTopY,
+          skewTan,
           depthScaleFn: isContinuous && spanLen >= 55
             ? (s) => {
                 const u = (s - startS) / Math.max(1, spanLen);
@@ -390,10 +415,14 @@ export function buildHighLodSuperstructure(
         group.add(boxMesh);
       }
 
-      // 강박스 횡방향 가로보 (Cross-Frames) 12m 간격
+      // 강박스 횡방향 가로보 (Cross-Frames) 14m 간격 (교량 사각과 평행 배치)
       if (boxCount >= 2) {
         const cfCount = Math.max(2, Math.round(spanLen / 14));
-        const cfGeo = new THREE.BoxGeometry(0.35, girderDepth * 0.6, spacing * (boxCount - 1));
+        const cfGeo = new THREE.BoxGeometry(
+          0.35,
+          girderDepth * 0.6,
+          (spacing * (boxCount - 1)) / cosSkew
+        );
         for (let c = 1; c < cfCount; c++) {
           const sCF = startS + (spanLen * c) / cfCount;
           const pt = evaluator(sCF);
@@ -401,12 +430,12 @@ export function buildHighLodSuperstructure(
           cf.position
             .copy(pt.position)
             .addScaledVector(pt.up, girderTopY - girderDepth * 0.48);
-          cf.setRotationFromMatrix(new THREE.Matrix4().makeBasis(pt.tangent, pt.up, pt.right));
+          applySkewBasis(cf, pt);
           group.add(cf);
         }
       }
     } else if (cat === 'STEEL_PLATE') {
-      // 용접 플레이트 I형 강거더 + 횡방향 브레이싱
+      // 용접 플레이트 I형 강거더 + 사각 평행 횡방향 브레이싱
       const gCount = B >= 22 ? 5 : 4;
       const spacing = (B - 4.0) / Math.max(1, gCount - 1);
       const plateProfile = buildIProfile(0.55, 0.62, 0.14, girderDepth, girderTopY);
@@ -414,7 +443,10 @@ export function buildHighLodSuperstructure(
       for (let g = 0; g < gCount; g++) {
         const zOff = (g - (gCount - 1) / 2) * spacing;
         const gMesh = new THREE.Mesh(
-          createSweptProfileGeometry(plateProfile, spanStations, evaluator, { offsetZ: zOff }),
+          createSweptProfileGeometry(plateProfile, spanStations, evaluator, {
+            offsetZ: zOff,
+            skewTan
+          }),
           mats.steelBox
         );
         gMesh.castShadow = true;
@@ -422,13 +454,17 @@ export function buildHighLodSuperstructure(
       }
 
       const braceCount = Math.max(3, Math.round(spanLen / 10));
-      const braceGeo = new THREE.BoxGeometry(0.18, girderDepth * 0.55, spacing * (gCount - 1));
+      const braceGeo = new THREE.BoxGeometry(
+        0.18,
+        girderDepth * 0.55,
+        (spacing * (gCount - 1)) / cosSkew
+      );
       for (let b = 1; b < braceCount; b++) {
         const sBr = startS + (spanLen * b) / braceCount;
         const pt = evaluator(sBr);
         const br = new THREE.Mesh(braceGeo, mats.steelLight);
         br.position.copy(pt.position).addScaledVector(pt.up, girderTopY - girderDepth * 0.5);
-        br.setRotationFromMatrix(new THREE.Matrix4().makeBasis(pt.tangent, pt.up, pt.right));
+        applySkewBasis(br, pt);
         group.add(br);
       }
     } else if (cat === 'RAHMEN') {
@@ -436,6 +472,7 @@ export function buildHighLodSuperstructure(
       const rahmenProfile = buildTrapezoidBoxProfile(B * 0.88, B * 0.82, 1.0, girderTopY);
       const rGeo = createSweptProfileGeometry(rahmenProfile, spanStations, evaluator, {
         pivotY: girderTopY,
+        skewTan,
         depthScaleFn: (s) => {
           const u = (s - startS) / Math.max(1, spanLen);
           const haunch = Math.pow(Math.abs(u - 0.5) * 2, 3);
@@ -446,11 +483,14 @@ export function buildHighLodSuperstructure(
       rMesh.castShadow = true;
       group.add(rMesh);
     } else if (cat === 'ARCH') {
-      // 보강 강박스 거더 + 양측 대칭 강아치 리브 + 수직 행어 케이블 + 상부 풍구 횡브레이싱
+      // 보강 강박스 거더 + 양측 대칭 사각 대응 강아치 리브 + 수직 행어 케이블 + 상부 풍구 횡브레이싱
       const edgeBoxProfile = buildTrapezoidBoxProfile(1.8, 1.5, 2.0, girderTopY);
       [-halfB + 1.1, halfB - 1.1].forEach((zEdge) => {
         const edgeMesh = new THREE.Mesh(
-          createSweptProfileGeometry(edgeBoxProfile, spanStations, evaluator, { offsetZ: zEdge }),
+          createSweptProfileGeometry(edgeBoxProfile, spanStations, evaluator, {
+            offsetZ: zEdge,
+            skewTan
+          }),
           mats.steelBox
         );
         edgeMesh.castShadow = true;
@@ -463,9 +503,10 @@ export function buildHighLodSuperstructure(
       const ribPointsLeftRight: THREE.Vector3[][] = [[], []];
 
       ribZOffsets.forEach((zOff, ribIdx) => {
+        const ribShiftS = zOff * skewTan;
         for (let k = 0; k <= archSamples; k++) {
           const u = k / archSamples;
-          const s = startS + 1.5 + (spanLen - 3.0) * u;
+          const s = startS + ribShiftS + 1.5 + (spanLen - 3.0) * u;
           const sample = evaluator(s);
           const hArch = 4 * archRise * u * (1 - u);
           const p = sample.position
@@ -484,14 +525,20 @@ export function buildHighLodSuperstructure(
       // 수직 행어 케이블 & 상부 횡방향 Strut 브레이싱
       for (let k = 3; k < archSamples - 2; k += 2) {
         const u = k / archSamples;
-        const s = startS + 1.5 + (spanLen - 3.0) * u;
-        const sample = evaluator(s);
         const hArch = 4 * archRise * u * (1 - u);
 
         ribZOffsets.forEach((zOff) => {
           if (hArch < 2.5) return;
-          const topPt = sample.position.clone().addScaledVector(sample.up, hArch).addScaledVector(sample.right, zOff);
-          const botPt = sample.position.clone().addScaledVector(sample.up, 0.2).addScaledVector(sample.right, zOff);
+          const sRib = startS + zOff * skewTan + 1.5 + (spanLen - 3.0) * u;
+          const sample = evaluator(sRib);
+          const topPt = sample.position
+            .clone()
+            .addScaledVector(sample.up, hArch)
+            .addScaledVector(sample.right, zOff);
+          const botPt = sample.position
+            .clone()
+            .addScaledVector(sample.up, 0.2)
+            .addScaledVector(sample.right, zOff);
           const dist = topPt.distanceTo(botPt);
           const hangerGeo = new THREE.CylinderGeometry(0.08, 0.08, dist, 6);
           const hanger = new THREE.Mesh(hangerGeo, mats.cable);
@@ -522,13 +569,13 @@ export function buildHighLodSuperstructure(
       // 사장교/엑스트라도즈드교 에지 유선형 박스 거더
       const deckBoxProfile = buildTrapezoidBoxProfile(B * 0.92, B * 0.65, 2.2, girderTopY);
       const boxMesh = new THREE.Mesh(
-        createSweptProfileGeometry(deckBoxProfile, spanStations, evaluator),
+        createSweptProfileGeometry(deckBoxProfile, spanStations, evaluator, { skewTan }),
         mats.concrete
       );
       boxMesh.castShadow = true;
       group.add(boxMesh);
     } else {
-      // 표준 PSC I형 / Bulb-T 거더 + 횡방향 격벽(가로보)
+      // 표준 PSC I형 / Bulb-T 거더 + 사각 평행 횡방향 격벽(가로보)
       const gCount = B >= 22 ? 6 : B >= 16 ? 5 : 4;
       const gSpacing = (B - 3.2) / Math.max(1, gCount - 1);
       const iProfile = buildIProfile(0.85, 0.72, 0.24, girderDepth, girderTopY);
@@ -536,16 +583,23 @@ export function buildHighLodSuperstructure(
       for (let g = 0; g < gCount; g++) {
         const zOff = (g - (gCount - 1) / 2) * gSpacing;
         const gMesh = new THREE.Mesh(
-          createSweptProfileGeometry(iProfile, spanStations, evaluator, { offsetZ: zOff }),
+          createSweptProfileGeometry(iProfile, spanStations, evaluator, {
+            offsetZ: zOff,
+            skewTan
+          }),
           mats.concrete
         );
         gMesh.castShadow = true;
         group.add(gMesh);
       }
 
-      // 횡방향 콘크리트 가로보 (Diaphragms: 양단 + 1/3, 2/3 지점)
+      // 횡방향 콘크리트 가로보 (Diaphragms: 양단 + 1/3, 2/3 지점, 사각 평행 회전)
       const diaFractions = spanLen >= 35 ? [0.03, 0.33, 0.67, 0.97] : [0.03, 0.5, 0.97];
-      const diaGeo = new THREE.BoxGeometry(0.42, girderDepth * 0.72, gSpacing * (gCount - 1));
+      const diaGeo = new THREE.BoxGeometry(
+        0.42,
+        girderDepth * 0.72,
+        (gSpacing * (gCount - 1)) / cosSkew
+      );
       diaFractions.forEach((f) => {
         const sDia = startS + spanLen * f;
         const pt = evaluator(sDia);
@@ -553,7 +607,7 @@ export function buildHighLodSuperstructure(
         dia.position
           .copy(pt.position)
           .addScaledVector(pt.up, girderTopY - girderDepth * 0.48);
-        dia.setRotationFromMatrix(new THREE.Matrix4().makeBasis(pt.tangent, pt.up, pt.right));
+        applySkewBasis(dia, pt);
         group.add(dia);
       });
     }
@@ -561,7 +615,7 @@ export function buildHighLodSuperstructure(
     cumS = endS;
   });
 
-  // 7. 사장교 / 엑스트라도즈드교 주탑(Pylon) 및 Fan Stay Cables 생성 (중간 교각 위치 기준)
+  // 7. 사장교 / 엑스트라도즈드교 주탑(Pylon) 및 Fan Stay Cables 생성 (중간 교각 위치 및 사각 기준)
   const hasCableStays = spans.some(
     (s) => s.type === 'CABLE_STAYED' || s.type === 'EXTRADOSED'
   );
@@ -583,11 +637,11 @@ export function buildHighLodSuperstructure(
       const sample = evaluator(sPylon);
       const pylonGroup = new THREE.Group();
       pylonGroup.position.copy(sample.position);
-      pylonGroup.rotation.y = sample.yawRad;
+      pylonGroup.rotation.y = sample.yawRad + clampedSkew;
 
-      // H형 주탑 좌우 레그 + 상·중부 가로보
+      // H형 주탑 좌우 레그 + 상·중부 가로보 (사각 방향 보정 폭)
       const legGeo = new THREE.BoxGeometry(2.6, towerAboveDeck, 1.8);
-      const legHalfZ = halfB + 0.4;
+      const legHalfZ = (halfB + 0.4) / cosSkew;
       [-legHalfZ, legHalfZ].forEach((lz) => {
         const leg = new THREE.Mesh(legGeo, mats.concrete);
         leg.position.set(0, towerAboveDeck / 2 - 2.0, lz);
@@ -608,27 +662,32 @@ export function buildHighLodSuperstructure(
 
       group.add(pylonGroup);
 
-      // Fan Stay Cables (양쪽 주탑 상부에서 전·후방 상판 가장자리로 사선 정착)
+      // Fan Stay Cables (사각 회전된 주탑 상부에서 사각 대응 상판 가장자리로 사선 정착)
       const cableCountPerSide = isFullCable ? 7 : 5;
       const reachLength = Math.min(totalLength * 0.45, maxSpan * 0.85);
+      const cSkew = Math.cos(clampedSkew);
+      const sSkew = Math.sin(clampedSkew);
+
       for (let c = 1; c <= cableCountPerSide; c++) {
         const frac = c / (cableCountPerSide + 0.5);
         const anchorOffsetY = towerAboveDeck - 3.5 - c * (isFullCable ? 1.8 : 1.1);
 
         [-1, 1].forEach((dirSign) => {
-          const sAnchor = sPylon + dirSign * reachLength * frac;
-          if (sAnchor <= 2 || sAnchor >= totalLength - 2) return;
-          const anchorSample = evaluator(sAnchor);
-
           [-1, 1].forEach((zSign) => {
+            const zDeck = zSign * (halfB - 0.1);
+            const sAnchor = sPylon + dirSign * reachLength * frac + zDeck * skewTan;
+            if (sAnchor <= 1.2 || sAnchor >= totalLength - 1.2) return;
+            const anchorSample = evaluator(sAnchor);
+
             const towerTopWorld = sample.position
               .clone()
               .add(new THREE.Vector3(0, anchorOffsetY, 0))
-              .addScaledVector(sample.horizRight, zSign * legHalfZ);
+              .addScaledVector(sample.horizTangent, zSign * legHalfZ * sSkew)
+              .addScaledVector(sample.horizRight, zSign * legHalfZ * cSkew);
             const deckAnchorWorld = anchorSample.position
               .clone()
               .addScaledVector(anchorSample.up, 0.35)
-              .addScaledVector(anchorSample.right, zSign * (halfB - 0.1));
+              .addScaledVector(anchorSample.right, zDeck);
 
             const cableLen = towerTopWorld.distanceTo(deckAnchorWorld);
             const cableGeo = new THREE.CylinderGeometry(0.09, 0.09, cableLen, 6);
