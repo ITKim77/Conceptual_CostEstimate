@@ -31,6 +31,7 @@ export const ParametricInputPanel: React.FC = () => {
     setActiveTab,
     updateBridgeParams,
     updateSpan,
+    applySuperstructureToAllSpans,
     addSpan,
     removeSpan,
     updatePier,
@@ -424,6 +425,43 @@ export const ParametricInputPanel: React.FC = () => {
         {/* 2. 경간 구성 탭 */}
         {activeTab === 'spans' && (
           <div className="space-y-3">
+            {/* 전체 경간 상부구조 형식 일괄 변경 */}
+            <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-800 flex items-center gap-1">
+                  <Layers className="w-3.5 h-3.5 text-red-500" />
+                  전체 경간 상부형식 일괄 변경
+                </span>
+                <span className="text-[10px] text-slate-500">선택 즉시 3D 형상·공사비 반영</span>
+              </div>
+              <SSOTSelect
+                label="대표 상부 구조 형식 (전체 경간 적용)"
+                value={
+                  bridgeParams.spans.length > 0 &&
+                  bridgeParams.spans.every((s) => s.type === bridgeParams.spans[0].type)
+                    ? bridgeParams.spans[0].type
+                    : ''
+                }
+                onChange={(e) => {
+                  const nextType = e.target.value as SuperstructureType;
+                  if (!nextType) return;
+                  applySuperstructureToAllSpans(nextType);
+                  showFeedback(
+                    `전체 ${bridgeParams.spans.length}개 경간 상부형식이 '${SUPERSTRUCTURE_CATALOG[nextType]?.name || nextType}'(으)로 변경되었습니다.`
+                  );
+                }}
+              >
+                <option value="" disabled>
+                  -- 혼합 구성 (경간별 상이) --
+                </option>
+                {Object.values(SUPERSTRUCTURE_CATALOG).map((cat) => (
+                  <option key={cat.code} value={cat.code}>
+                    {cat.name} ({cat.min_span}~{cat.max_span}m)
+                  </option>
+                ))}
+              </SSOTSelect>
+            </div>
+
             <div className="flex items-center justify-between pb-1">
               <span className="text-xs font-bold text-slate-700">개별 경간 배열 및 상부 형식</span>
               <button

@@ -87,26 +87,60 @@ export function createAsphaltMarkingTexture(bridgeWidth: number): THREE.CanvasTe
   return tex;
 }
 
-/**
- * 상부형식 카테고리 판별
- */
-function classifySuperstructure(type: SuperstructureType):
+export type SuperstructureCategory =
   | 'ARCH'
   | 'CABLE_STAYED'
   | 'EXTRADOSED'
+  | 'PSC_BOX_FCM'
   | 'PSC_BOX'
   | 'STEEL_BOX'
+  | 'RATIONALIZED_PLATE'
   | 'STEEL_PLATE'
-  | 'RAHMEN'
-  | 'PSC_GIRDER' {
+  | 'RC_RAHMEN'
+  | 'RC_BOX'
+  | 'PSC_LOW_DEPTH'
+  | 'PSC_U_TROUGH'
+  | 'PSC_GIRDER_HAUNCHED'
+  | 'PSC_GIRDER_I';
+
+/**
+ * 상부형식 세부 공종 카테고리 판별 (공법·단면 특화 3D 형상 매핑)
+ */
+export function classifySuperstructure(type: SuperstructureType): SuperstructureCategory {
   if (type === 'STEEL_ARCH') return 'ARCH';
   if (type === 'CABLE_STAYED') return 'CABLE_STAYED';
   if (type === 'EXTRADOSED') return 'EXTRADOSED';
+  if (type === 'PSC_BOX_FCM') return 'PSC_BOX_FCM';
   if (type.startsWith('PSC_BOX')) return 'PSC_BOX';
   if (type.startsWith('STEEL_BOX')) return 'STEEL_BOX';
-  if (type === 'STEEL_PLATE' || type === 'RATIONALIZED_PLATE') return 'STEEL_PLATE';
-  if (type.startsWith('RC_')) return 'RAHMEN';
-  return 'PSC_GIRDER';
+  if (type === 'RATIONALIZED_PLATE') return 'RATIONALIZED_PLATE';
+  if (type === 'STEEL_PLATE') return 'STEEL_PLATE';
+  if (type === 'RC_RAHMEN') return 'RC_RAHMEN';
+  if (type === 'RC_BOX') return 'RC_BOX';
+  if (
+    type === 'PF_BEAM' ||
+    type === 'RPF_BEAM' ||
+    type === 'Precom_GIRDER' ||
+    type === 'Turnover_GIRDER' ||
+    type === 'IH_GIRDER' ||
+    type === 'IT_GIRDER'
+  ) {
+    return 'PSC_LOW_DEPTH';
+  }
+  if (type === 'BICON_GIRDER' || type === 'UDPC' || type === 'PCT_GIRDER') {
+    return 'PSC_U_TROUGH';
+  }
+  if (
+    type === 'MODIFIED_PSC_BEAM' ||
+    type === 'DR_GIRDER' ||
+    type === 'SPLICED_GIRDER_G' ||
+    type === 'SPLICED_GIRDER_B' ||
+    type === 'OPTIMIZED_GIRDER' ||
+    type === 'TOP_GIRDER'
+  ) {
+    return 'PSC_GIRDER_HAUNCHED';
+  }
+  return 'PSC_GIRDER_I';
 }
 
 /**
@@ -152,17 +186,42 @@ function buildTrapezoidBoxProfile(topW: number, botW: number, depth: number, top
   ];
 }
 
+function buildUTroughProfile(topW: number, botW: number, depth: number, wallT: number, topY: number): Array<[number, number]> {
+  const ht = topW / 2;
+  const hb = botW / 2;
+  const hti = Math.max(0.25, ht - wallT);
+  const hbi = Math.max(0.2, hb - wallT);
+  const innerFloorY = topY - depth + Math.max(0.24, depth * 0.18);
+  return [
+    [topY, ht],
+    [topY, hti],
+    [innerFloorY, hbi],
+    [innerFloorY, -hbi],
+    [topY, -hti],
+    [topY, -ht],
+    [topY - depth, -hb],
+    [topY - depth, hb]
+  ];
+}
+
 /**
- * 교각 위치에서의 상판/거더 하단까지의 총 구조고 계산 (하부공 받침부 정합용)
+ * 지점부(교각·교대 받침 위치) 기준 상판 하부 총 구조고 (하부공 받침부 높이 정합용)
  */
 export function getGirderStructuralDepth(type: SuperstructureType, maxSpanLen: number): number {
   const cat = classifySuperstructure(type);
-  if (cat === 'PSC_BOX') return Math.max(2.3, Math.min(4.2, maxSpanLen * 0.042));
-  if (cat === 'STEEL_BOX') return Math.max(2.2, Math.min(3.8, maxSpanLen * 0.038));
-  if (cat === 'STEEL_PLATE') return Math.max(1.9, Math.min(3.2, maxSpanLen * 0.04));
-  if (cat === 'RAHMEN') return 1.35;
-  if (cat === 'CABLE_STAYED' || cat === 'EXTRADOSED') return 2.4;
-  return Math.max(1.8, Math.min(2.8, maxSpanLen * 0.048));
+  if (cat === 'PSC_BOX_FCM') return Math.max(2.9, Math.min(5.2, maxSpanLen * 0.056));
+  if (cat === 'PSC_BOX') return Math.max(2.3, Math.min(3.8, maxSpanLen * 0.044));
+  if (cat === 'STEEL_BOX') return Math.max(2.2, Math.min(3.8, maxSpanLen * 0.042));
+  if (cat === 'RATIONALIZED_PLATE') return Math.max(2.2, Math.min(3.6, maxSpanLen * 0.046));
+  if (cat === 'STEEL_PLATE') return Math.max(1.9, Math.min(3.1, maxSpanLen * 0.04));
+  if (cat === 'RC_RAHMEN') return 1.8;
+  if (cat === 'RC_BOX') return Math.max(2.8, Math.min(4.2, maxSpanLen * 0.14));
+  if (cat === 'CABLE_STAYED') return 2.2;
+  if (cat === 'EXTRADOSED') return Math.max(2.5, Math.min(3.8, maxSpanLen * 0.036));
+  if (cat === 'PSC_LOW_DEPTH') return Math.max(1.45, Math.min(2.25, maxSpanLen * 0.036));
+  if (cat === 'PSC_GIRDER_HAUNCHED') return Math.max(2.1, Math.min(3.1, maxSpanLen * 0.052));
+  if (cat === 'PSC_U_TROUGH') return Math.max(1.9, Math.min(2.8, maxSpanLen * 0.046));
+  return Math.max(1.8, Math.min(2.7, maxSpanLen * 0.046));
 }
 
 /**
@@ -364,29 +423,48 @@ export function buildHighLodSuperstructure(
     const girderTopY = -slabThick;
     const girderDepth = getGirderStructuralDepth(sp.type, spanLen);
 
-    if (cat === 'PSC_BOX') {
-      // 단일 혹은 2셀 광폭 콘크리트 박스거더 + FCM 포물선 변단면 헌치
-      const isHaunched = sp.type === 'PSC_BOX_FCM' || spanLen >= 75;
-      const boxTopW = Math.min(B * 0.72, 13.5);
-      const boxBotW = boxTopW * 0.62;
-      const baseDepth = isHaunched ? girderDepth * 0.72 : girderDepth;
-      const boxProfile = buildTrapezoidBoxProfile(boxTopW, boxBotW, baseDepth, girderTopY);
+    if (cat === 'PSC_BOX_FCM' || cat === 'PSC_BOX') {
+      // PSC BOX (FCM 변단면 캔틸레버 vs ILM/MSS/FSM 일정단면 박스거더, 광폭 2셀 분기)
+      const isFcm = cat === 'PSC_BOX_FCM' || spanLen >= 75;
+      const boxCount = !isFcm && B >= 20 ? 2 : 1;
+      const spacing = boxCount === 2 ? B * 0.44 : 0;
+      const boxTopW = boxCount === 2 ? Math.min(8.5, B * 0.36) : Math.min(B * 0.74, 14.0);
+      const boxBotW = boxTopW * 0.6;
+      const boxProfile = buildTrapezoidBoxProfile(boxTopW, boxBotW, girderDepth, girderTopY);
 
-      const boxGeo = createSweptProfileGeometry(boxProfile, spanStations, evaluator, {
-        pivotY: girderTopY,
-        skewTan,
-        depthScaleFn: isHaunched
-          ? (s) => {
-              const u = (s - startS) / Math.max(1, spanLen); // 0 ~ 1
-              const edgeFactor = Math.pow(Math.abs(u - 0.5) * 2, 2); // 0 (중앙) ~ 1 (지점)
-              return 0.9 + edgeFactor * 0.75; // 지점부 1.65배 헌치
-            }
-          : undefined
+      for (let b = 0; b < boxCount; b++) {
+        const zOff = (b - (boxCount - 1) / 2) * spacing;
+        const boxGeo = createSweptProfileGeometry(boxProfile, spanStations, evaluator, {
+          offsetZ: zOff,
+          pivotY: girderTopY,
+          skewTan,
+          depthScaleFn: isFcm
+            ? (s) => {
+                const u = (s - startS) / Math.max(1, spanLen);
+                const edgeFactor = Math.pow(Math.abs(u - 0.5) * 2, 2);
+                return 0.54 + edgeFactor * 0.46; // 중앙부 슬림 -> 지점부 1.0x 포물선 헌치
+              }
+            : undefined
+        });
+        const boxMesh = new THREE.Mesh(boxGeo, mats.concrete);
+        boxMesh.castShadow = true;
+        boxMesh.receiveShadow = true;
+        group.add(boxMesh);
+      }
+
+      // 지점부 주두부(Pier Table) 보강 격벽 칼라
+      [startS + 0.4, endS - 0.4].forEach((sCollar) => {
+        const pt = evaluator(sCollar);
+        const collarGeo = new THREE.BoxGeometry(
+          isFcm ? 2.2 : 1.0,
+          girderDepth * 0.94,
+          Math.min(B - 1.5, boxTopW * boxCount + 1.2) / cosSkew
+        );
+        const collar = new THREE.Mesh(collarGeo, mats.concreteDark);
+        collar.position.copy(pt.position).addScaledVector(pt.up, girderTopY - girderDepth * 0.48);
+        applySkewBasis(collar, pt);
+        group.add(collar);
       });
-      const boxMesh = new THREE.Mesh(boxGeo, mats.concrete);
-      boxMesh.castShadow = true;
-      boxMesh.receiveShadow = true;
-      group.add(boxMesh);
     } else if (cat === 'STEEL_BOX') {
       // 다실(2~3열) 사다리꼴 강박스 거더 + 연속교 변단면 + 사각 평행 횡방향 격벽 프레임
       const boxCount = B >= 22 ? 3 : 2;
@@ -402,25 +480,26 @@ export function buildHighLodSuperstructure(
           offsetZ: zOff,
           pivotY: girderTopY,
           skewTan,
-          depthScaleFn: isContinuous && spanLen >= 55
-            ? (s) => {
-                const u = (s - startS) / Math.max(1, spanLen);
-                const endProximity = Math.pow(Math.abs(u - 0.5) * 2, 2);
-                return 0.88 + endProximity * 0.35;
-              }
-            : undefined
+          depthScaleFn:
+            isContinuous && spanLen >= 50
+              ? (s) => {
+                  const u = (s - startS) / Math.max(1, spanLen);
+                  const endProximity = Math.pow(Math.abs(u - 0.5) * 2, 2);
+                  return 0.72 + endProximity * 0.28;
+                }
+              : undefined
         });
         const boxMesh = new THREE.Mesh(boxGeo, mats.steelBox);
         boxMesh.castShadow = true;
         group.add(boxMesh);
       }
 
-      // 강박스 횡방향 가로보 (Cross-Frames) 14m 간격 (교량 사각과 평행 배치)
+      // 강박스 횡방향 가로보 (Cross-Frames)
       if (boxCount >= 2) {
-        const cfCount = Math.max(2, Math.round(spanLen / 14));
+        const cfCount = Math.max(2, Math.round(spanLen / 12));
         const cfGeo = new THREE.BoxGeometry(
           0.35,
-          girderDepth * 0.6,
+          girderDepth * 0.62,
           (spacing * (boxCount - 1)) / cosSkew
         );
         for (let c = 1; c < cfCount; c++) {
@@ -434,11 +513,14 @@ export function buildHighLodSuperstructure(
           group.add(cf);
         }
       }
-    } else if (cat === 'STEEL_PLATE') {
-      // 용접 플레이트 I형 강거더 + 사각 평행 횡방향 브레이싱
-      const gCount = B >= 22 ? 5 : 4;
-      const spacing = (B - 4.0) / Math.max(1, gCount - 1);
-      const plateProfile = buildIProfile(0.55, 0.62, 0.14, girderDepth, girderTopY);
+    } else if (cat === 'RATIONALIZED_PLATE' || cat === 'STEEL_PLATE') {
+      // 합리화 소수주형(2주형 대형 I거더 + 중량 가로보) vs 표준 강판형(4~5주형)
+      const isRationalized = cat === 'RATIONALIZED_PLATE';
+      const gCount = isRationalized ? 2 : B >= 22 ? 5 : 4;
+      const spacing = isRationalized ? B * 0.54 : (B - 4.0) / Math.max(1, gCount - 1);
+      const plateProfile = isRationalized
+        ? buildIProfile(0.88, 0.96, 0.22, girderDepth, girderTopY)
+        : buildIProfile(0.55, 0.62, 0.14, girderDepth, girderTopY);
 
       for (let g = 0; g < gCount; g++) {
         const zOff = (g - (gCount - 1) / 2) * spacing;
@@ -453,37 +535,57 @@ export function buildHighLodSuperstructure(
         group.add(gMesh);
       }
 
-      const braceCount = Math.max(3, Math.round(spanLen / 10));
+      const braceCount = Math.max(3, Math.round(spanLen / (isRationalized ? 8 : 10)));
       const braceGeo = new THREE.BoxGeometry(
-        0.18,
-        girderDepth * 0.55,
+        isRationalized ? 0.34 : 0.18,
+        girderDepth * (isRationalized ? 0.72 : 0.55),
         (spacing * (gCount - 1)) / cosSkew
       );
       for (let b = 1; b < braceCount; b++) {
         const sBr = startS + (spanLen * b) / braceCount;
         const pt = evaluator(sBr);
         const br = new THREE.Mesh(braceGeo, mats.steelLight);
-        br.position.copy(pt.position).addScaledVector(pt.up, girderTopY - girderDepth * 0.5);
+        br.position.copy(pt.position).addScaledVector(pt.up, girderTopY - girderDepth * 0.46);
         applySkewBasis(br, pt);
         group.add(br);
       }
-    } else if (cat === 'RAHMEN') {
-      // 라멘교: 단부 헌치가 부드럽게 깊어지는 일체식 슬래브형 거더
-      const rahmenProfile = buildTrapezoidBoxProfile(B * 0.88, B * 0.82, 1.0, girderTopY);
+    } else if (cat === 'RC_RAHMEN') {
+      // 라멘교: 단부 포탈 헌치가 깊어지는 일체식 슬래브 + 지점부 강결 우각부 브래킷
+      const rahmenProfile = buildTrapezoidBoxProfile(B * 0.88, B * 0.84, girderDepth, girderTopY);
       const rGeo = createSweptProfileGeometry(rahmenProfile, spanStations, evaluator, {
         pivotY: girderTopY,
         skewTan,
         depthScaleFn: (s) => {
           const u = (s - startS) / Math.max(1, spanLen);
           const haunch = Math.pow(Math.abs(u - 0.5) * 2, 3);
-          return 1.0 + haunch * 0.8;
+          return 0.58 + haunch * 0.42;
         }
       });
       const rMesh = new THREE.Mesh(rGeo, mats.concrete);
       rMesh.castShadow = true;
       group.add(rMesh);
+    } else if (cat === 'RC_BOX') {
+      // 노출 RC BOX 라멘 암거: 상·하·좌·우 폐합 콘크리트 박스 단면 + 중공 입면 링
+      const boxW = B * 0.92;
+      const wallT = 0.52;
+      const leftWall = buildTrapezoidBoxProfile(wallT, wallT, girderDepth, girderTopY);
+      const bottomSlab = buildTrapezoidBoxProfile(boxW, boxW, wallT, girderTopY - girderDepth + wallT);
+      [-boxW / 2 + wallT / 2, 0, boxW / 2 - wallT / 2].forEach((zW) => {
+        const wMesh = new THREE.Mesh(
+          createSweptProfileGeometry(leftWall, spanStations, evaluator, { offsetZ: zW, skewTan }),
+          mats.concrete
+        );
+        wMesh.castShadow = true;
+        group.add(wMesh);
+      });
+      const botMesh = new THREE.Mesh(
+        createSweptProfileGeometry(bottomSlab, spanStations, evaluator, { skewTan }),
+        mats.concreteDark
+      );
+      botMesh.receiveShadow = true;
+      group.add(botMesh);
     } else if (cat === 'ARCH') {
-      // 보강 강박스 거더 + 양측 대칭 사각 대응 강아치 리브 + 수직 행어 케이블 + 상부 풍구 횡브레이싱
+      // 보강 강박스 거더 + 양측 대칭 사각 대응 강아치 리브 + 행어 + 상부 풍구 + 횡방향 바닥보
       const edgeBoxProfile = buildTrapezoidBoxProfile(1.8, 1.5, 2.0, girderTopY);
       [-halfB + 1.1, halfB - 1.1].forEach((zEdge) => {
         const edgeMesh = new THREE.Mesh(
@@ -496,6 +598,17 @@ export function buildHighLodSuperstructure(
         edgeMesh.castShadow = true;
         group.add(edgeMesh);
       });
+
+      // 하부 횡방향 강재 바닥보 (Floor Beams)
+      const fbCount = Math.max(4, Math.round(spanLen / 7));
+      const fbGeo = new THREE.BoxGeometry(0.32, 1.25, (B - 2.2) / cosSkew);
+      for (let f = 1; f < fbCount; f++) {
+        const pt = evaluator(startS + (spanLen * f) / fbCount);
+        const fb = new THREE.Mesh(fbGeo, mats.steelLight);
+        fb.position.copy(pt.position).addScaledVector(pt.up, girderTopY - 0.72);
+        applySkewBasis(fb, pt);
+        group.add(fb);
+      }
 
       const archRise = Math.min(34, Math.max(14, spanLen * 0.22));
       const archSamples = 32;
@@ -522,7 +635,6 @@ export function buildHighLodSuperstructure(
         group.add(ribMesh);
       });
 
-      // 수직 행어 케이블 & 상부 횡방향 Strut 브레이싱
       for (let k = 3; k < archSamples - 2; k += 2) {
         const u = k / archSamples;
         const hArch = 4 * archRise * u * (1 - u);
@@ -550,7 +662,6 @@ export function buildHighLodSuperstructure(
           group.add(hanger);
         });
 
-        // 아치 리브 상부 풍구 횡브레이싱
         if (hArch > archRise * 0.55) {
           const pL = ribPointsLeftRight[0][k];
           const pR = ribPointsLeftRight[1][k];
@@ -565,35 +676,104 @@ export function buildHighLodSuperstructure(
           group.add(strut);
         }
       }
-    } else if (cat === 'CABLE_STAYED' || cat === 'EXTRADOSED') {
-      // 사장교/엑스트라도즈드교 에지 유선형 박스 거더
-      const deckBoxProfile = buildTrapezoidBoxProfile(B * 0.92, B * 0.65, 2.2, girderTopY);
+    } else if (cat === 'CABLE_STAYED') {
+      // 사장교: 강합성 유선형 에지 박스 보강거더 (청회색 강박스 하부 + 리브)
+      const deckBoxProfile = buildTrapezoidBoxProfile(B * 0.94, B * 0.62, girderDepth, girderTopY);
       const boxMesh = new THREE.Mesh(
         createSweptProfileGeometry(deckBoxProfile, spanStations, evaluator, { skewTan }),
+        mats.steelBox
+      );
+      boxMesh.castShadow = true;
+      group.add(boxMesh);
+    } else if (cat === 'EXTRADOSED') {
+      // 엑스트라도즈드교: 주탑부 헌치 변단면 광폭 PSC 박스 거더
+      const deckBoxProfile = buildTrapezoidBoxProfile(B * 0.86, B * 0.58, girderDepth, girderTopY);
+      const boxMesh = new THREE.Mesh(
+        createSweptProfileGeometry(deckBoxProfile, spanStations, evaluator, {
+          pivotY: girderTopY,
+          skewTan,
+          depthScaleFn: (s) => {
+            const u = (s - startS) / Math.max(1, spanLen);
+            const edgeFactor = Math.pow(Math.abs(u - 0.5) * 2, 2);
+            return 0.68 + edgeFactor * 0.32;
+          }
+        }),
         mats.concrete
       );
       boxMesh.castShadow = true;
       group.add(boxMesh);
+    } else if (cat === 'PSC_U_TROUGH') {
+      // U-거더 / 복부 박스형 (BICON, UDPC, PCT)
+      const gCount = B >= 22 ? 4 : 3;
+      const gSpacing = (B - 4.2) / Math.max(1, gCount - 1);
+      const uProfile = buildUTroughProfile(2.1, 1.45, girderDepth, 0.28, girderTopY);
+
+      for (let g = 0; g < gCount; g++) {
+        const zOff = (g - (gCount - 1) / 2) * gSpacing;
+        const uMesh = new THREE.Mesh(
+          createSweptProfileGeometry(uProfile, spanStations, evaluator, {
+            offsetZ: zOff,
+            skewTan
+          }),
+          mats.concrete
+        );
+        uMesh.castShadow = true;
+        group.add(uMesh);
+      }
+
+      const diaFractions = [0.04, 0.5, 0.96];
+      const diaGeo = new THREE.BoxGeometry(0.45, girderDepth * 0.72, (gSpacing * (gCount - 1)) / cosSkew);
+      diaFractions.forEach((f) => {
+        const pt = evaluator(startS + spanLen * f);
+        const dia = new THREE.Mesh(diaGeo, mats.concreteDark);
+        dia.position.copy(pt.position).addScaledVector(pt.up, girderTopY - girderDepth * 0.48);
+        applySkewBasis(dia, pt);
+        group.add(dia);
+      });
     } else {
-      // 표준 PSC I형 / Bulb-T 거더 + 사각 평행 횡방향 격벽(가로보)
+      // PSC 거더 계열 분기: 저형고 강합성(PF/Precom/IH/IT) vs 변단면(개량/DR/Spliced) vs 표준 I형
+      const isLowDepth = cat === 'PSC_LOW_DEPTH';
+      const isHaunchedGirder = cat === 'PSC_GIRDER_HAUNCHED';
       const gCount = B >= 22 ? 6 : B >= 16 ? 5 : 4;
       const gSpacing = (B - 3.2) / Math.max(1, gCount - 1);
-      const iProfile = buildIProfile(0.85, 0.72, 0.24, girderDepth, girderTopY);
+      const iProfile = isLowDepth
+        ? buildIProfile(1.05, 1.05, 0.34, girderDepth, girderTopY)
+        : buildIProfile(0.85, 0.74, 0.24, girderDepth, girderTopY);
 
       for (let g = 0; g < gCount; g++) {
         const zOff = (g - (gCount - 1) / 2) * gSpacing;
         const gMesh = new THREE.Mesh(
           createSweptProfileGeometry(iProfile, spanStations, evaluator, {
             offsetZ: zOff,
-            skewTan
+            pivotY: girderTopY,
+            skewTan,
+            depthScaleFn: isHaunchedGirder
+              ? (s) => {
+                  const u = (s - startS) / Math.max(1, spanLen);
+                  const edgeFactor = Math.pow(Math.abs(u - 0.5) * 2, 2);
+                  return 0.72 + edgeFactor * 0.28;
+                }
+              : undefined
           }),
           mats.concrete
         );
         gMesh.castShadow = true;
         group.add(gMesh);
+
+        // 저형고 강합성/프리플렉스 계열은 복부 내장 강재 코어 시각화 띠 추가
+        if (isLowDepth) {
+          const steelCoreProfile = buildTrapezoidBoxProfile(0.42, 0.42, girderDepth * 0.52, girderTopY - girderDepth * 0.24);
+          const sMesh = new THREE.Mesh(
+            createSweptProfileGeometry(steelCoreProfile, spanStations, evaluator, {
+              offsetZ: zOff,
+              skewTan
+            }),
+            mats.steelBox
+          );
+          group.add(sMesh);
+        }
       }
 
-      // 횡방향 콘크리트 가로보 (Diaphragms: 양단 + 1/3, 2/3 지점, 사각 평행 회전)
       const diaFractions = spanLen >= 35 ? [0.03, 0.33, 0.67, 0.97] : [0.03, 0.5, 0.97];
       const diaGeo = new THREE.BoxGeometry(
         0.42,
@@ -615,23 +795,23 @@ export function buildHighLodSuperstructure(
     cumS = endS;
   });
 
-  // 7. 사장교 / 엑스트라도즈드교 주탑(Pylon) 및 Fan Stay Cables 생성 (중간 교각 위치 및 사각 기준)
+  // 7. 사장교 / 엑스트라도즈드교 주탑(Pylon) 및 Fan Stay Cables 생성 (단경간일 경우 중앙 배치 지원)
   const hasCableStays = spans.some(
     (s) => s.type === 'CABLE_STAYED' || s.type === 'EXTRADOSED'
   );
-  if (hasCableStays && pierStations.length > 0) {
+  if (hasCableStays) {
     const isFullCable = spans.some((s) => s.type === 'CABLE_STAYED');
     const maxSpan = Math.max(...spans.map((s) => s.span_length));
     const towerAboveDeck = isFullCable
-      ? Math.max(28, Math.min(72, maxSpan * 0.34))
-      : Math.max(16, Math.min(34, maxSpan * 0.18));
+      ? Math.max(32, Math.min(76, maxSpan * 0.36))
+      : Math.max(15, Math.min(26, maxSpan * 0.17));
 
-    // 주탑 위치 선정 (중앙부 주요 교각 혹은 전체 중간 교각 중 1~2개소)
+    const pylonStations = pierStations.length > 0 ? pierStations : [totalLength * 0.5];
     const pylonIndices =
-      pierStations.length <= 2
-        ? pierStations.map((_, i) => i)
-        : [Math.floor((pierStations.length - 1) / 2), Math.ceil((pierStations.length - 1) / 2)];
-    const uniquePylonStations = Array.from(new Set(pylonIndices.map((idx) => pierStations[idx])));
+      pylonStations.length <= 2
+        ? pylonStations.map((_, i) => i)
+        : [Math.floor((pylonStations.length - 1) / 2), Math.ceil((pylonStations.length - 1) / 2)];
+    const uniquePylonStations = Array.from(new Set(pylonIndices.map((idx) => pylonStations[idx])));
 
     uniquePylonStations.forEach((sPylon) => {
       const sample = evaluator(sPylon);
@@ -639,42 +819,63 @@ export function buildHighLodSuperstructure(
       pylonGroup.position.copy(sample.position);
       pylonGroup.rotation.y = sample.yawRad + clampedSkew;
 
-      // H형 주탑 좌우 레그 + 상·중부 가로보 (사각 방향 보정 폭)
-      const legGeo = new THREE.BoxGeometry(2.6, towerAboveDeck, 1.8);
-      const legHalfZ = (halfB + 0.4) / cosSkew;
-      [-legHalfZ, legHalfZ].forEach((lz) => {
-        const leg = new THREE.Mesh(legGeo, mats.concrete);
-        leg.position.set(0, towerAboveDeck / 2 - 2.0, lz);
-        leg.castShadow = true;
-        pylonGroup.add(leg);
-      });
-
-      const beamGeo = new THREE.BoxGeometry(2.2, 2.4, legHalfZ * 2);
-      const upperBeam = new THREE.Mesh(beamGeo, mats.concrete);
-      upperBeam.position.set(0, towerAboveDeck - 5.5, 0);
-      pylonGroup.add(upperBeam);
+      const legHalfZ = (halfB + 0.5) / cosSkew;
+      const cSkew = Math.cos(clampedSkew);
+      const sSkew = Math.sin(clampedSkew);
 
       if (isFullCable) {
-        const midBeam = new THREE.Mesh(beamGeo, mats.concrete);
-        midBeam.position.set(0, towerAboveDeck * 0.52, 0);
+        // 사장교: A형 / 다이아몬드형 경사 수렴 주탑 + 상단 첨탑
+        const apexZ = 1.1;
+        const baseZ = legHalfZ;
+        const legVecLen = Math.hypot(towerAboveDeck, baseZ - apexZ);
+        const legTilt = Math.atan2(baseZ - apexZ, towerAboveDeck);
+        const legGeo = new THREE.BoxGeometry(2.6, legVecLen, 1.7);
+
+        [-1, 1].forEach((zSign) => {
+          const leg = new THREE.Mesh(legGeo, mats.concrete);
+          leg.position.set(0, towerAboveDeck / 2 - 1.5, zSign * ((baseZ + apexZ) / 2));
+          leg.rotation.x = -zSign * legTilt;
+          leg.castShadow = true;
+          pylonGroup.add(leg);
+        });
+
+        const upperBeam = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.6, apexZ * 2 + 2.4), mats.concrete);
+        upperBeam.position.set(0, towerAboveDeck - 3.5, 0);
+        pylonGroup.add(upperBeam);
+
+        const midBeam = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.2, legHalfZ * 1.4), mats.concrete);
+        midBeam.position.set(0, towerAboveDeck * 0.45, 0);
         pylonGroup.add(midBeam);
+      } else {
+        // 엑스트라도즈드교: 저탑 수직 H형 더블 레그 주탑
+        const legGeo = new THREE.BoxGeometry(2.8, towerAboveDeck, 1.9);
+        [-legHalfZ, legHalfZ].forEach((lz) => {
+          const leg = new THREE.Mesh(legGeo, mats.concrete);
+          leg.position.set(0, towerAboveDeck / 2 - 2.0, lz);
+          leg.castShadow = true;
+          pylonGroup.add(leg);
+        });
+        const upperBeam = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.2, legHalfZ * 2), mats.concrete);
+        upperBeam.position.set(0, towerAboveDeck - 4.2, 0);
+        pylonGroup.add(upperBeam);
       }
 
       group.add(pylonGroup);
 
-      // Fan Stay Cables (사각 회전된 주탑 상부에서 사각 대응 상판 가장자리로 사선 정착)
-      const cableCountPerSide = isFullCable ? 7 : 5;
-      const reachLength = Math.min(totalLength * 0.45, maxSpan * 0.85);
-      const cSkew = Math.cos(clampedSkew);
-      const sSkew = Math.sin(clampedSkew);
+      // Fan Stay Cables
+      const cableCountPerSide = isFullCable ? 9 : 5;
+      const reachLength = Math.min(totalLength * 0.46, maxSpan * 0.85);
 
       for (let c = 1; c <= cableCountPerSide; c++) {
         const frac = c / (cableCountPerSide + 0.5);
-        const anchorOffsetY = towerAboveDeck - 3.5 - c * (isFullCable ? 1.8 : 1.1);
+        const anchorOffsetY = towerAboveDeck - 3.2 - c * (isFullCable ? 1.55 : 1.05);
+        const localLegZ = isFullCable
+          ? legHalfZ * (1 - (anchorOffsetY / Math.max(1, towerAboveDeck)) * 0.78)
+          : legHalfZ;
 
         [-1, 1].forEach((dirSign) => {
           [-1, 1].forEach((zSign) => {
-            const zDeck = zSign * (halfB - 0.1);
+            const zDeck = zSign * (halfB - 0.15);
             const sAnchor = sPylon + dirSign * reachLength * frac + zDeck * skewTan;
             if (sAnchor <= 1.2 || sAnchor >= totalLength - 1.2) return;
             const anchorSample = evaluator(sAnchor);
@@ -682,8 +883,8 @@ export function buildHighLodSuperstructure(
             const towerTopWorld = sample.position
               .clone()
               .add(new THREE.Vector3(0, anchorOffsetY, 0))
-              .addScaledVector(sample.horizTangent, zSign * legHalfZ * sSkew)
-              .addScaledVector(sample.horizRight, zSign * legHalfZ * cSkew);
+              .addScaledVector(sample.horizTangent, zSign * localLegZ * sSkew)
+              .addScaledVector(sample.horizRight, zSign * localLegZ * cSkew);
             const deckAnchorWorld = anchorSample.position
               .clone()
               .addScaledVector(anchorSample.up, 0.35)
@@ -719,7 +920,8 @@ export function buildHighLodAbutment(
   abutmentItem: AbutmentItem | undefined,
   evaluator: AlignmentEvaluator,
   mats: BridgeMaterialSet,
-  showPiles: boolean
+  showPiles: boolean,
+  isIntegralFrame: boolean = false
 ): void {
   const pt = evaluator(station);
   const fg = pt.position.y;
@@ -759,15 +961,17 @@ export function buildHighLodAbutment(
   backwall.castShadow = true;
   abutGroup.add(backwall);
 
-  // 4. 교좌부 탄성/포트 받침 패드
-  const padCount = bridgeWidth >= 20 ? 5 : 4;
-  const padSpan = (bridgeWidth - 3.0) / Math.max(1, padCount - 1);
-  const pedGeo = new THREE.BoxGeometry(1.0, 0.3, 1.0);
-  for (let p = 0; p < padCount; p++) {
-    const pz = ((p - (padCount - 1) / 2) * padSpan) / cosSkew;
-    const ped = new THREE.Mesh(pedGeo, mats.bearing);
-    ped.position.set(dir * 0.4, seatTopY + 0.15, pz);
-    abutGroup.add(ped);
+  // 4. 교좌부 탄성/포트 받침 패드 (일체식 라멘/RC BOX는 받침 제외)
+  if (!isIntegralFrame) {
+    const padCount = bridgeWidth >= 20 ? 5 : 4;
+    const padSpan = (bridgeWidth - 3.0) / Math.max(1, padCount - 1);
+    const pedGeo = new THREE.BoxGeometry(1.0, 0.3, 1.0);
+    for (let p = 0; p < padCount; p++) {
+      const pz = ((p - (padCount - 1) / 2) * padSpan) / cosSkew;
+      const ped = new THREE.Mesh(pedGeo, mats.bearing);
+      ped.position.set(dir * 0.4, seatTopY + 0.15, pz);
+      abutGroup.add(ped);
+    }
   }
 
   // 5. 좌/우측 경사 날개벽 (Flared Wing Walls)
@@ -1016,4 +1220,408 @@ function buildHammerheadCopingGeometry(
   geo.rotateY(Math.PI / 2);
   geo.computeVertexNormals();
   return geo;
+}
+
+export interface ApproachEarthworkParams {
+  group: THREE.Group;
+  totalBridgeLen: number;
+  bridgeWidth: number;
+  skewRad: number;
+  evaluator: AlignmentEvaluator;
+  getGroundY: (x: number, z: number) => number;
+  terrainBounds: { xStart: number; xSpan: number; zSpan: number };
+  mats: BridgeMaterialSet;
+  wireframe: boolean;
+}
+
+/**
+ * 단면 링(좌->우) 시퀀스를 삼각형 메쉬로 연결하는 토공·도로 표면 스트립 생성 헬퍼
+ */
+function buildPolyStripMesh(
+  rings: THREE.Vector3[][],
+  mat: THREE.Material,
+  uvPair?: { repeatLen: number; stations: number[]; isLeftRightUV?: boolean }
+): THREE.Mesh | null {
+  if (rings.length < 2 || rings[0].length < 2) return null;
+  const cols = rings[0].length;
+  const positions: number[] = [];
+  const uvs: number[] = [];
+  const indices: number[] = [];
+
+  for (let r = 0; r < rings.length; r++) {
+    for (let c = 0; c < cols; c++) {
+      const p = rings[r][c];
+      positions.push(p.x, p.y, p.z);
+      if (uvPair) {
+        const u = cols > 1 ? c / (cols - 1) : 0;
+        const v = (uvPair.stations[r] ?? r) / uvPair.repeatLen;
+        uvs.push(u, v);
+      }
+    }
+  }
+
+  for (let r = 0; r < rings.length - 1; r++) {
+    for (let c = 0; c < cols - 1; c++) {
+      const a = r * cols + c;
+      const b = (r + 1) * cols + c;
+      const d = (r + 1) * cols + (c + 1);
+      const e = r * cols + (c + 1);
+      indices.push(a, b, e, b, d, e);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  if (uvPair) {
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  }
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
+/**
+ * 교대(A1·A2) 후방 고속도로 접속 토공(성토체/소단/원추사면/절토사면)·접속슬래브·노반·가드레일 모델 생성
+ * - 선형(평면 R, 종단구배, 편경사)과 실측 DEM 지반고(getGroundY)에 100% 종속
+ * - 교대 배면 사각(skewRad)에서 직각 도로 단면으로 24m 구간 내 매끄럽게 완화 접속
+ */
+export function buildApproachHighwayEarthwork({
+  group,
+  totalBridgeLen,
+  bridgeWidth,
+  skewRad,
+  evaluator,
+  getGroundY,
+  terrainBounds,
+  mats,
+  wireframe
+}: ApproachEarthworkParams): void {
+  const B = Math.max(8, bridgeWidth);
+  const halfB = B / 2;
+  const curbInset = 0.55;
+  const halfRoadW = halfB + 1.35;
+  const clampedSkew = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, skewRad || 0));
+  const skewTan = Math.tan(clampedSkew);
+
+  const fillGrassMat = new THREE.MeshStandardMaterial({
+    color: 0x4E7E44,
+    roughness: 0.92,
+    metalness: 0.02,
+    side: THREE.DoubleSide,
+    wireframe
+  });
+  const cutSoilMat = new THREE.MeshStandardMaterial({
+    color: 0x8F7659,
+    roughness: 0.95,
+    metalness: 0.02,
+    side: THREE.DoubleSide,
+    wireframe
+  });
+  const shoulderMat = new THREE.MeshStandardMaterial({
+    color: 0x64748B,
+    roughness: 0.88,
+    metalness: 0.06,
+    side: THREE.DoubleSide,
+    wireframe
+  });
+  const guardrailMat = new THREE.MeshStandardMaterial({
+    color: 0xCBD5E1,
+    roughness: 0.34,
+    metalness: 0.72,
+    wireframe
+  });
+
+  const { xStart, xSpan, zSpan } = terrainBounds;
+  const xMin = xStart + 10;
+  const xMax = xStart + xSpan - 10;
+  const zMax = zSpan / 2 - 14;
+
+  // A1 (dirSign = -1, sAbut = 0) 및 A2 (dirSign = +1, sAbut = totalBridgeLen) 양측 접속부 빌드
+  const ends: Array<{ sAbut: number; dirSign: -1 | 1 }> = [
+    { sAbut: 0, dirSign: -1 },
+    { sAbut: totalBridgeLen, dirSign: 1 }
+  ];
+
+  ends.forEach(({ sAbut, dirSign }) => {
+    // 1. 지형 경계 내 유효 접속 연장을 산정 (최대 132m)
+    let approachLen = 0;
+    for (let d = 4; d <= 132; d += 4) {
+      const sample = evaluator(sAbut + dirSign * d);
+      const px = sample.position.x;
+      const pz = sample.position.z;
+      if (px < xMin || px > xMax || Math.abs(pz) > zMax) break;
+      approachLen = d;
+    }
+    if (approachLen < 12) return;
+
+    const skewAtDist = (d: number) => skewTan * Math.max(0, 1 - d / 24);
+
+    // 도로 표면 샘플 거리 목록 (0m, 2.8m 포함하여 교대 흉벽 후방 토공 시작점과 일치)
+    const roadDists: number[] = [0, 2.8];
+    for (let d = 6; d < approachLen; d += 4) {
+      roadDists.push(d);
+    }
+    if (roadDists[roadDists.length - 1] < approachLen) {
+      roadDists.push(approachLen);
+    }
+
+    const evalRoadEdge = (d: number, zLocal: number, yLocal: number): THREE.Vector3 => {
+      const sk = skewAtDist(d);
+      const st = sAbut + dirSign * d + zLocal * sk;
+      const pt = evaluator(st);
+      return pt.position
+        .clone()
+        .addScaledVector(pt.up, yLocal)
+        .addScaledVector(pt.right, zLocal);
+    };
+
+    // 2. 아스팔트 본선 포장 & 차선 도색 리본
+    const paveZLeft = -(halfB - curbInset);
+    const paveZRight = halfB - curbInset;
+    const paveRings: THREE.Vector3[][] = roadDists.map((d) => [
+      evalRoadEdge(d, paveZLeft, 0.085),
+      evalRoadEdge(d, paveZRight, 0.085)
+    ]);
+    const paveStations = roadDists.map((d) => sAbut + dirSign * d);
+    const orderedPaveRings = dirSign < 0 ? [...paveRings].reverse() : paveRings;
+    const orderedStations = dirSign < 0 ? [...paveStations].reverse() : paveStations;
+    const paveMesh = buildPolyStripMesh(orderedPaveRings, mats.asphalt, {
+      repeatLen: 14,
+      stations: orderedStations
+    });
+    if (paveMesh) group.add(paveMesh);
+
+    // 3. 접속슬래브 (Approach Concrete Transition Slab, 교대 배면 0 ~ 8m)
+    const slabDists = [0, 2.8, 5.5, 8.0].filter((d) => d <= approachLen);
+    if (slabDists.length >= 2) {
+      const slabRings = slabDists.map((d) => [
+        evalRoadEdge(d, -halfB, 0.03),
+        evalRoadEdge(d, halfB, 0.03)
+      ]);
+      const slabMesh = buildPolyStripMesh(slabRings, mats.concrete);
+      if (slabMesh) group.add(slabMesh);
+    }
+
+    // 4. 양측 길어깨 노반 (Shoulder + Subbase Edge)
+    [-1, 1].forEach((side) => {
+      const zPave = side * (halfB - curbInset);
+      const zSh = side * halfRoadW;
+      const shRings = roadDists.map((d) =>
+        side > 0
+          ? [evalRoadEdge(d, zPave, 0.04), evalRoadEdge(d, zSh, -0.24)]
+          : [evalRoadEdge(d, zSh, -0.24), evalRoadEdge(d, zPave, 0.04)]
+      );
+      const shMesh = buildPolyStripMesh(shRings, shoulderMat);
+      if (shMesh) group.add(shMesh);
+    });
+
+    // 5. 고속도로 가드레일(W-Beam + 지주) 및 중앙분리대
+    [-1, 1].forEach((side) => {
+      const zRail = side * (halfB - 0.24);
+      const railTopPts: THREE.Vector3[] = [];
+      const railBotPts: THREE.Vector3[] = [];
+      roadDists.forEach((d) => {
+        railTopPts.push(evalRoadEdge(d, zRail, 0.86));
+        railBotPts.push(evalRoadEdge(d, zRail, 0.56));
+      });
+      const railRings = railTopPts.map((tp, idx) => [tp, railBotPts[idx]]);
+      const railMesh = buildPolyStripMesh(railRings, guardrailMat);
+      if (railMesh) group.add(railMesh);
+
+      const postGeo = new THREE.BoxGeometry(0.11, 0.92, 0.11);
+      for (let d = 2; d <= approachLen - 1; d += 4) {
+        const sk = skewAtDist(d);
+        const st = sAbut + dirSign * d + zRail * sk;
+        const pt = evaluator(st);
+        const post = new THREE.Mesh(postGeo, guardrailMat);
+        post.position
+          .copy(pt.position)
+          .addScaledVector(pt.up, 0.42)
+          .addScaledVector(pt.right, zRail);
+        post.rotation.y = pt.yawRad;
+        post.castShadow = true;
+        group.add(post);
+      }
+    });
+
+    if (B >= 18) {
+      const medRings = roadDists.map((d) => [
+        evalRoadEdge(d, -0.22, 0.92),
+        evalRoadEdge(d, 0.22, 0.92)
+      ]);
+      const medSideL = roadDists.map((d) => [
+        evalRoadEdge(d, -0.32, 0.05),
+        evalRoadEdge(d, -0.22, 0.92)
+      ]);
+      const medSideR = roadDists.map((d) => [
+        evalRoadEdge(d, 0.22, 0.92),
+        evalRoadEdge(d, 0.32, 0.05)
+      ]);
+      [medRings, medSideL, medSideR].forEach((rings) => {
+        const m = buildPolyStripMesh(rings, mats.concrete);
+        if (m) group.add(m);
+      });
+    }
+
+    // 6. 교대 흉벽 후방 지형 정합 토공 성토체(1:1.5 + 소단) / 절토체(측구 + 1:1.0) 모델
+    const earthDists = roadDists.filter((d) => d >= 2.8);
+    if (earthDists.length >= 2) {
+      interface SlopeCrossInfo {
+        shPt: THREE.Vector3;
+        bermIn: THREE.Vector3;
+        bermOut: THREE.Vector3;
+        toePt: THREE.Vector3;
+        isCut: boolean;
+        outDir: THREE.Vector3;
+        heightH: number;
+      }
+
+      const computeSideSlope = (d: number, side: -1 | 1): SlopeCrossInfo => {
+        const sk = skewAtDist(d);
+        const zSh = side * halfRoadW;
+        const st = sAbut + dirSign * d + zSh * sk;
+        const pt = evaluator(st);
+        const shPt = pt.position
+          .clone()
+          .addScaledVector(pt.up, -0.24)
+          .addScaledVector(pt.right, zSh);
+        const outDir = pt.horizRight.clone().multiplyScalar(side).normalize();
+        const gUnderShoulder = getGroundY(shPt.x, shPt.z);
+
+        // 절토부 판별: 자연지반이 노반 어깨보다 0.35m 이상 높은 경우
+        if (gUnderShoulder - shPt.y > 0.35) {
+          const ditchIn = shPt.clone().addScaledVector(outDir, 0.6).add(new THREE.Vector3(0, -0.35, 0));
+          const ditchOut = ditchIn.clone().addScaledVector(outDir, 0.9);
+          let hCut = Math.max(0.8, gUnderShoulder - ditchOut.y + 0.5);
+          let topCut = ditchOut.clone().addScaledVector(outDir, hCut * 1.0);
+          for (let iter = 0; iter < 3; iter++) {
+            const gTop = getGroundY(topCut.x, topCut.z) + 0.55;
+            hCut = Math.max(0.8, gTop - ditchOut.y);
+            topCut = ditchOut.clone().addScaledVector(outDir, hCut * 1.0);
+            topCut.y = gTop;
+          }
+          return {
+            shPt,
+            bermIn: ditchIn,
+            bermOut: ditchOut,
+            toePt: topCut,
+            isCut: true,
+            outDir,
+            heightH: hCut
+          };
+        }
+
+        // 성토부: 1:1.5 표준 경사 (+ 성토고 6.5m 초과 시 1.5m 소단 삽입)
+        let hFill = Math.max(0.8, shPt.y - gUnderShoulder + 0.65);
+        let toePt = shPt.clone();
+        for (let iter = 0; iter < 3; iter++) {
+          const hasBerm = hFill > 6.5;
+          const latOut = hFill * 1.5 + (hasBerm ? 1.5 : 0);
+          const candidateXZ = shPt.clone().addScaledVector(outDir, latOut);
+          const gToe = getGroundY(candidateXZ.x, candidateXZ.z) - 0.65;
+          hFill = Math.max(0.8, shPt.y - gToe);
+          toePt = new THREE.Vector3(candidateXZ.x, gToe, candidateXZ.z);
+        }
+
+        if (hFill > 6.5) {
+          const upperDrop = 6.0;
+          const bermIn = shPt
+            .clone()
+            .addScaledVector(outDir, upperDrop * 1.5)
+            .add(new THREE.Vector3(0, -upperDrop, 0));
+          const bermOut = bermIn.clone().addScaledVector(outDir, 1.5);
+          return {
+            shPt,
+            bermIn,
+            bermOut,
+            toePt,
+            isCut: false,
+            outDir,
+            heightH: hFill
+          };
+        }
+
+        const mid = shPt.clone().lerp(toePt, 0.5);
+        return {
+          shPt,
+          bermIn: mid,
+          bermOut: mid.clone(),
+          toePt,
+          isCut: false,
+          outDir,
+          heightH: hFill
+        };
+      };
+
+      [-1, 1].forEach((sideNum) => {
+        const side = sideNum as -1 | 1;
+        const infos = earthDists.map((d) => computeSideSlope(d, side));
+
+        // 연속 성토/절토 구간 분할 없이 일관된 4-링 위상으로 사면·소단(측구) 구성
+        const hasAnyCut = infos.some((inf) => inf.isCut);
+        const upperSlopeRings = infos.map((inf) => [inf.shPt, inf.bermIn]);
+        const benchRings = infos.map((inf) => [inf.bermIn, inf.bermOut]);
+        const lowerSlopeRings = infos.map((inf) => [inf.bermOut, inf.toePt]);
+
+        const upperMesh = buildPolyStripMesh(
+          upperSlopeRings,
+          hasAnyCut && infos[0].isCut ? shoulderMat : fillGrassMat
+        );
+        const benchMesh = buildPolyStripMesh(benchRings, mats.concreteDark);
+        const lowerMesh = buildPolyStripMesh(
+          lowerSlopeRings,
+          hasAnyCut && infos[Math.floor(infos.length / 2)].isCut ? cutSoilMat : fillGrassMat
+        );
+        if (upperMesh) group.add(upperMesh);
+        if (benchMesh) group.add(benchMesh);
+        if (lowerMesh) group.add(lowerMesh);
+
+        // 7. 교대 날개벽 외측 원추형 단부 성토 사면 (Conical Abutment End Slope)
+        const startInfo = infos[0];
+        if (!startInfo.isCut && startInfo.heightH > 1.2) {
+          const sk0 = skewAtDist(earthDists[0]);
+          const zSh = side * halfRoadW;
+          const pt0 = evaluator(sAbut + dirSign * earthDists[0] + zSh * sk0);
+          const forwardBridgeDir = pt0.horizTangent.clone().multiplyScalar(-dirSign).normalize();
+          const coneRings: THREE.Vector3[][] = [];
+          const latTotal = startInfo.toePt.clone().sub(startInfo.shPt);
+          latTotal.y = 0;
+          const latDist = latTotal.length();
+
+          const coneSegs = 6;
+          for (let k = 0; k <= coneSegs; k++) {
+            const ang = (k / coneSegs) * (Math.PI * 0.42); // 0 -> ~75도 전방으로 감싸며 마감
+            const radDir = startInfo.outDir
+              .clone()
+              .multiplyScalar(Math.cos(ang))
+              .addScaledVector(forwardBridgeDir, Math.sin(ang))
+              .normalize();
+            const coneToeXZ = startInfo.shPt.clone().addScaledVector(radDir, latDist * 0.92);
+            const gConeToe = getGroundY(coneToeXZ.x, coneToeXZ.z) - 0.65;
+            const coneToe = new THREE.Vector3(coneToeXZ.x, gConeToe, coneToeXZ.z);
+            coneRings.push([startInfo.shPt.clone(), coneToe]);
+          }
+          const coneMesh = buildPolyStripMesh(coneRings, fillGrassMat);
+          if (coneMesh) group.add(coneMesh);
+        }
+      });
+
+      // 8. 원거리 접속부 종점 마감 캡 (성토체 단부 수직 횡단 절개면 닫기)
+      const lastD = earthDists[earthDists.length - 1];
+      const endL = computeSideSlope(lastD, -1);
+      const endR = computeSideSlope(lastD, 1);
+      if (!endL.isCut && !endR.isCut) {
+        const capRings: THREE.Vector3[][] = [
+          [endL.toePt, endR.toePt],
+          [endL.shPt, endR.shPt]
+        ];
+        const capMesh = buildPolyStripMesh(capRings, fillGrassMat);
+        if (capMesh) group.add(capMesh);
+      }
+    }
+  });
 }

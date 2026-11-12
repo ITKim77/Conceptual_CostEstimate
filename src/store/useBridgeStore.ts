@@ -45,6 +45,7 @@ interface BridgeStoreState {
   autoFitPiersToTerrain: () => void;
   loadKoreaLocationPreset: (presetId: string) => void;
   updateSpan: (index: number, span: Partial<SpanItem>) => void;
+  applySuperstructureToAllSpans: (type: SuperstructureType) => void;
   addSpan: (type?: SuperstructureType, length?: number) => void;
   removeSpan: (index: number) => void;
   updatePier: (index: number, pier: Partial<PierItem>) => void;
@@ -327,6 +328,34 @@ export const useBridgeStore = create<BridgeStoreState>((set, get) => ({
       return {
         bridgeParams: newParams,
         costBreakdown: newBreakdown
+      };
+    });
+  },
+
+  applySuperstructureToAllSpans: (type) => {
+    set((state) => {
+      const newSpans = state.bridgeParams.spans.map((s) => ({
+        ...s,
+        type
+      }));
+      const newParams = {
+        ...state.bridgeParams,
+        spans: newSpans
+      };
+      const newBreakdown = calculateBridgeCost(newParams);
+      const updatedAlts = state.alternatives.map((alt) =>
+        alt.id === state.activeAlternativeId
+          ? {
+              ...alt,
+              bridgeParams: newParams,
+              costBreakdown: newBreakdown
+            }
+          : alt
+      );
+      return {
+        bridgeParams: newParams,
+        costBreakdown: newBreakdown,
+        alternatives: updatedAlts
       };
     });
   },

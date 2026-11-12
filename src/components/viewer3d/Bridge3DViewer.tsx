@@ -20,12 +20,16 @@ import {
 import { createAlignmentEvaluator } from '../../domain/engine/alignment_3d';
 import {
   BridgeMaterialSet,
+  buildApproachHighwayEarthwork,
   buildHighLodAbutment,
   buildHighLodPier,
   buildHighLodSuperstructure,
+  classifySuperstructure,
   createAsphaltMarkingTexture,
   getGirderStructuralDepth
 } from './bridge_geometry_builders';
+import { SUPERSTRUCTURE_CATALOG } from '../../domain/constants/rev04_database';
+import { SuperstructureType } from '../../domain/models/bridge';
 import {
   generateKoreaAerialOrthophotoCanvas
 } from '../../domain/constants/korea_terrain_presets';
@@ -48,11 +52,12 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
   const previousMousePositionRef = useRef({ x: 0, y: 0 });
   const lookAtTargetRef = useRef(new THREE.Vector3(100, 15, 0));
 
-  const { bridgeParams, cameraPreset, setCameraPreset } = useBridgeStore();
+  const { bridgeParams, cameraPreset, setCameraPreset, applySuperstructureToAllSpans } = useBridgeStore();
   const [wireframe, setWireframe] = useState(false);
   const [showPiles, setShowPiles] = useState(true);
   const [showTerrain, setShowTerrain] = useState(true);
   const [showAlignment, setShowAlignment] = useState(true);
+  const [showEarthwork, setShowEarthwork] = useState(true);
   const [showDimensions, setShowDimensions] = useState(true);
   const [isGISPlannerOpen, setIsGISPlannerOpen] = useState(false);
   const [realTerrain, setRealTerrain] = useState<RealWorldTerrainData | null>(null);
@@ -516,13 +521,59 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
     const startDepth = getGirderStructuralDepth(startType, spans[0]?.span_length || 40);
     const endDepth = getGirderStructuralDepth(endType, spans[spans.length - 1]?.span_length || 40);
 
+    const startCat = classifySuperstructure(startType);
+    const endCat = classifySuperstructure(endType);
+
     const ptA1 = evaluator(0);
     const ogA1 = getActualGroundY(ptA1.position.x, ptA1.position.z);
-    buildHighLodAbutment(bGroup, 0, true, bridge_width, skewRad, startDepth, ogA1, abutments[0], evaluator, mats, showPiles);
+    buildHighLodAbutment(
+      bGroup,
+      0,
+      true,
+      bridge_width,
+      skewRad,
+      startDepth,
+      ogA1,
+      abutments[0],
+      evaluator,
+      mats,
+      showPiles,
+      startCat === 'RC_RAHMEN' || startCat === 'RC_BOX'
+    );
 
     const ptA2 = evaluator(totalBridgeLen);
     const ogA2 = getActualGroundY(ptA2.position.x, ptA2.position.z);
-    buildHighLodAbutment(bGroup, totalBridgeLen, false, bridge_width, skewRad, endDepth, ogA2, abutments[1], evaluator, mats, showPiles);
+    buildHighLodAbutment(
+      bGroup,
+      totalBridgeLen,
+      false,
+      bridge_width,
+      skewRad,
+      endDepth,
+      ogA2,
+      abutments[1],
+      evaluator,
+      mats,
+      showPiles,
+      endCat === 'RC_RAHMEN' || endCat === 'RC_BOX'
+    );
+
+    // =========================================================================
+    // 3.5 교대 후방 고속도로 토공 접속부 (성토체·소단·원추사면·절토·포장·가드레일)
+    // =========================================================================
+    if (showEarthwork) {
+      buildApproachHighwayEarthwork({
+        group: bGroup,
+        totalBridgeLen,
+        bridgeWidth: bridge_width,
+        skewRad,
+        evaluator,
+        getGroundY: getActualGroundY,
+        terrainBounds: { xStart, xSpan, zSpan },
+        mats,
+        wireframe
+      });
+    }
 
     // =========================================================================
     // 4. 고(高)LOD 교각 (P1, P2...) 빌드 (형식별 차별화 + 곡선 호길이 측점 + 실측 지반고)
@@ -547,7 +598,7 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
     return () => {
       asphaltTexture.dispose();
     };
-  }, [bridgeParams, showPiles, showTerrain, showAlignment, wireframe, realTerrain, terrainVerticalScale]);
+  }, [bridgeParams, showPiles, showTerrain, showAlignment, showEarthwork, wireframe, realTerrain, terrainVerticalScale]);
 
   return (
     <div
@@ -609,85 +660,154 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
         </button>
       </div>
 
-      {/* View Options Toggle Controls (Bottom Left) */}
-      <div className="absolute bottom-3 left-3 flex items-center gap-1.5 bg-slate-900/85 backdrop-blur-md p-1 rounded-lg border border-slate-700 text-xs text-white shadow-lg">
-        <button
-          onClick={() => setShowTerrain(!showTerrain)}
-          className={`flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-bold transition-all ${
-            showTerrain ? 'bg-emerald-600 text-white shadow' : 'text-slate-400 hover:text-white'
-          }`}
-          title="3D 대한민국 지형 메쉬 및 정사영상 텍스처 렌더링 전환"
+      {/* 상부구조 형식 즉시 전환 바 (3D BIM 실시간 형상 변경) */}
+      <div className="absolute top-14 left-3 flex items-center gap-2 bg-slate-900/85 backdrop-blur-md px-2.5 py-1.5 rounded-lg border border-slate-700 text-xs text-white shadow-lg">
+        <span className="text-[11px] font-bold text-amber-300 shrink-0">상부형식</span>
+        <select
+          aria-label="3D 뷰어 상부구조 형식 변경"
+          value={
+            bridgeParams.spans.length > 0 &&
+            bridgeParams.spans.every((s) => s.type === bridgeParams.spans[0].type)
+              ? bridgeParams.spans[0].type
+              : ''
+          }
+          onChange={(e) => {
+            const val = e.target.value as SuperstructureType;
+            if (!val) return;
+            applySuperstructureToAllSpans(val);
+            showToast(
+              `상부구조 형식이 '${SUPERSTRUCTURE_CATALOG[val]?.name || val}'(으)로 즉시 변경되었습니다.`
+            );
+          }}
+          className="bg-slate-800 hover:bg-slate-700 text-slate-100 text-[11px] font-semibold px-2 py-1 rounded border border-slate-600 focus:outline-none focus:border-sky-400 cursor-pointer max-w-[235px]"
         >
-          <Mountain className="w-3.5 h-3.5" />
-          <span>지형·정사영상 {showTerrain ? 'ON' : 'OFF'}</span>
-        </button>
-
-        <button
-          onClick={() => setShowAlignment(!showAlignment)}
-          className={`flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-bold transition-all ${
-            showAlignment ? 'bg-amber-600 text-white shadow' : 'text-slate-400 hover:text-white'
-          }`}
-          title="3D 도로 선형 중심선 가이드라인 투영 전환"
-        >
-          <Compass className="w-3.5 h-3.5" />
-          <span>선형 중심선</span>
-        </button>
-
-        <button
-          onClick={() => setShowPiles(!showPiles)}
-          className={`flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-bold transition-all ${
-            showPiles ? 'bg-sky-600 text-white shadow' : 'text-slate-400 hover:text-white'
-          }`}
-          title="지중 강관말뚝 기초 투시 렌더링 전환"
-        >
-          <Layers className="w-3.5 h-3.5" />
-          <span>말뚝기초</span>
-        </button>
-
-        <button
-          onClick={() => setWireframe(!wireframe)}
-          className={`flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-bold transition-all ${
-            wireframe ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white'
-          }`}
-          title="와이어프레임 구조 투영"
-        >
-          <Eye className="w-3.5 h-3.5" />
-          <span>와이어</span>
-        </button>
+          <option value="" disabled>
+            혼합 구성 (경간별 상이)
+          </option>
+          <optgroup label="── 특수교 (아치 · 사장 · E/D) ──">
+            <option value="STEEL_ARCH">강아치교 (Steel Arch)</option>
+            <option value="CABLE_STAYED">사장교 (Cable-Stayed)</option>
+            <option value="EXTRADOSED">엑스트라도우즈드교 (E/D)</option>
+          </optgroup>
+          <optgroup label="── PSC / 강 박스거더 ──">
+            <option value="PSC_BOX_FCM">PSC BOX (F.C.M 변단면)</option>
+            <option value="PSC_BOX_ILM">PSC BOX (I.L.M 압출)</option>
+            <option value="PSC_BOX_MSS">PSC BOX (M.S.S 이동식)</option>
+            <option value="STEEL_BOX_CONTINUOUS">ST. BOX GIRDER (연속 강박스)</option>
+            <option value="STEEL_BOX_SIMPLE">ST. BOX GIRDER (단경간)</option>
+          </optgroup>
+          <optgroup label="── 강판형 / 소수주형 ──">
+            <option value="RATIONALIZED_PLATE">합리화 소수주형 판형교 (2주형)</option>
+            <option value="STEEL_PLATE">S.T PLATE (강판형교)</option>
+          </optgroup>
+          <optgroup label="── PSC I / 변단면 / 저형고 거더 ──">
+            <option value="PSC_BEAM">1. PSC BEAM (표준 I형)</option>
+            <option value="MODIFIED_PSC_BEAM">9. 개량형 변단면 PSC BEAM</option>
+            <option value="PF_BEAM">10. PF BEAM (저형고 강합성)</option>
+            <option value="BICON_GIRDER">3. BICON GIRDER (U형 거더)</option>
+            <option value="IPC_GIRDER">7. IPC GIRDER</option>
+            <option value="EX_GIRDER">2. EX GIRDER</option>
+          </optgroup>
+          <optgroup label="── 라멘 · 박스 암거 ──">
+            <option value="RC_RAHMEN">노출 R.C 라멘</option>
+            <option value="RC_BOX">노출 RC BOX</option>
+          </optgroup>
+        </select>
       </div>
 
-      {/* DEM Terrain Vertical Height Scale Control (Bottom Right) */}
-      <div className="absolute bottom-3 right-3 flex items-center gap-2 bg-slate-900/90 backdrop-blur-md px-2.5 py-1.5 rounded-lg border border-slate-700 text-xs text-white shadow-lg">
-        <div className="flex items-center gap-1 text-[11px] font-bold text-emerald-300 shrink-0" title="실측 DEM 지형 표고차(높이) 과장 배율 조절">
-          <Ruler className="w-3.5 h-3.5 text-emerald-400" />
-          <span>지형 높이 배율</span>
-          <span className="font-mono text-amber-300 w-9 text-right">{terrainVerticalScale.toFixed(1)}x</span>
+      {/* Bottom Overlay Row: View Options (Left) + DEM Height Scale (Right) */}
+      <div className="absolute bottom-3 left-3 right-3 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+        {/* View Options Toggle Controls */}
+        <div className="flex flex-wrap items-center gap-1.5 bg-slate-900/85 backdrop-blur-md p-1 rounded-lg border border-slate-700 text-xs text-white shadow-lg pointer-events-auto">
+          <button
+            onClick={() => setShowTerrain(!showTerrain)}
+            className={`flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-bold transition-all ${
+              showTerrain ? 'bg-emerald-600 text-white shadow' : 'text-slate-400 hover:text-white'
+            }`}
+            title="3D 대한민국 지형 메쉬 및 정사영상 텍스처 렌더링 전환"
+          >
+            <Mountain className="w-3.5 h-3.5" />
+            <span>지형·정사영상 {showTerrain ? 'ON' : 'OFF'}</span>
+          </button>
+
+          <button
+            onClick={() => setShowAlignment(!showAlignment)}
+            className={`flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-bold transition-all ${
+              showAlignment ? 'bg-amber-600 text-white shadow' : 'text-slate-400 hover:text-white'
+            }`}
+            title="3D 도로 선형 중심선 가이드라인 투영 전환"
+          >
+            <Compass className="w-3.5 h-3.5" />
+            <span>선형 중심선</span>
+          </button>
+
+          <button
+            onClick={() => setShowEarthwork(!showEarthwork)}
+            className={`flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-bold transition-all ${
+              showEarthwork ? 'bg-lime-600 text-white shadow' : 'text-slate-400 hover:text-white'
+            }`}
+            title="교대 후방 고속도로 성토·절토·노반 토공 모델 표시 전환"
+          >
+            <Waves className="w-3.5 h-3.5" />
+            <span>고속도로 토공</span>
+          </button>
+
+          <button
+            onClick={() => setShowPiles(!showPiles)}
+            className={`flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-bold transition-all ${
+              showPiles ? 'bg-sky-600 text-white shadow' : 'text-slate-400 hover:text-white'
+            }`}
+            title="지중 강관말뚝 기초 투시 렌더링 전환"
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>말뚝기초</span>
+          </button>
+
+          <button
+            onClick={() => setWireframe(!wireframe)}
+            className={`flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-bold transition-all ${
+              wireframe ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white'
+            }`}
+            title="와이어프레임 구조 투영"
+          >
+            <Eye className="w-3.5 h-3.5" />
+            <span>와이어</span>
+          </button>
         </div>
-        <input
-          type="range"
-          min={0.5}
-          max={5.0}
-          step={0.25}
-          value={terrainVerticalScale}
-          onChange={(e) => setTerrainVerticalScale(parseFloat(e.target.value))}
-          className="w-20 accent-emerald-400 cursor-pointer h-1.5 bg-slate-700 rounded-lg"
-          aria-label="지형 높이 배율"
-        />
-        <div className="flex items-center gap-0.5">
-          {[1, 2, 3, 5].map((presetScale) => (
-            <button
-              key={presetScale}
-              onClick={() => setTerrainVerticalScale(presetScale)}
-              className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold transition-all ${
-                Math.abs(terrainVerticalScale - presetScale) < 0.01
-                  ? 'bg-emerald-600 text-white shadow'
-                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
-              }`}
-              title={presetScale === 1 ? '실측 1:1 높이 (과장 없음)' : `지형 기복 ${presetScale}배 강조`}
-            >
-              {presetScale}x
-            </button>
-          ))}
+
+        {/* DEM Terrain Vertical Height Scale Control */}
+        <div className="flex items-center gap-2 bg-slate-900/90 backdrop-blur-md px-2.5 py-1.5 rounded-lg border border-slate-700 text-xs text-white shadow-lg pointer-events-auto">
+          <div className="flex items-center gap-1 text-[11px] font-bold text-emerald-300 shrink-0" title="실측 DEM 지형 표고차(높이) 과장 배율 조절">
+            <Ruler className="w-3.5 h-3.5 text-emerald-400" />
+            <span>지형 높이 배율</span>
+            <span className="font-mono text-amber-300 w-9 text-right">{terrainVerticalScale.toFixed(1)}x</span>
+          </div>
+          <input
+            type="range"
+            min={0.5}
+            max={5.0}
+            step={0.25}
+            value={terrainVerticalScale}
+            onChange={(e) => setTerrainVerticalScale(parseFloat(e.target.value))}
+            className="w-20 accent-emerald-400 cursor-pointer h-1.5 bg-slate-700 rounded-lg"
+            aria-label="지형 높이 배율"
+          />
+          <div className="flex items-center gap-0.5">
+            {[1, 2, 3, 5].map((presetScale) => (
+              <button
+                key={presetScale}
+                onClick={() => setTerrainVerticalScale(presetScale)}
+                className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold transition-all ${
+                  Math.abs(terrainVerticalScale - presetScale) < 0.01
+                    ? 'bg-emerald-600 text-white shadow'
+                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+                }`}
+                title={presetScale === 1 ? '실측 1:1 높이 (과장 없음)' : `지형 기복 ${presetScale}배 강조`}
+              >
+                {presetScale}x
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -733,7 +853,7 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
 
       {/* 🌟 노선 계획 실시간 반영 완료 알림 토스트 */}
       {toastMessage && (
-        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-40 bg-emerald-600/95 text-white px-4 py-2 rounded-xl shadow-2xl border border-emerald-400 text-xs font-bold flex items-center gap-2 animate-bounce">
+        <div className="absolute top-24 left-1/2 -translate-x-1/2 z-40 bg-emerald-600/95 text-white px-4 py-2 rounded-xl shadow-2xl border border-emerald-400 text-xs font-bold flex items-center gap-2 animate-bounce">
           <Sparkles className="w-4 h-4 text-amber-300" />
           <span>{toastMessage}</span>
         </div>
