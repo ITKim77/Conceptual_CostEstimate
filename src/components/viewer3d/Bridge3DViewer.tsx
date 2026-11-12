@@ -50,6 +50,7 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
   const [isGISPlannerOpen, setIsGISPlannerOpen] = useState(false);
   const [realTerrain, setRealTerrain] = useState<RealWorldTerrainData | null>(null);
   const [isLoadingTerrain, setIsLoadingTerrain] = useState(false);
+  const [terrainVerticalScale, setTerrainVerticalScale] = useState<number>(1.0);
 
   // 실제 위성 정사영상 타일 및 DEM 래스터 실시간 로드 (대한민국 전역 실측 데이터)
   useEffect(() => {
@@ -140,13 +141,13 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
     containerRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // Lights - 줌아웃 시에도 어둡지 않고 항상 밝고 맑은 주광 환경 유지
-    const ambientLight = new THREE.AmbientLight(0xFFFFFF, 1.25);
+    // Lights - 지형 기복(Hillshade) 입체감을 살리면서도 어둡지 않은 균형 잡힌 주광 환경
+    const ambientLight = new THREE.AmbientLight(0xFFFFFF, 0.72);
     scene.add(ambientLight);
 
-    // 주 태양광
-    const dirLight = new THREE.DirectionalLight(0xFFFBEB, 1.4);
-    dirLight.position.set(300, 500, 250);
+    // 주 태양광 (지형 경사면 음영이 또렷하게 드러나는 사선 입사각)
+    const dirLight = new THREE.DirectionalLight(0xFFFBEB, 1.35);
+    dirLight.position.set(420, 280, 220);
     dirLight.castShadow = true;
     dirLight.shadow.mapSize.width = 2048;
     dirLight.shadow.mapSize.height = 2048;
@@ -158,13 +159,12 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
     dirLight.shadow.camera.bottom = -600;
     scene.add(dirLight);
 
-    // 반대편 보조광 (그늘진 역광 면도 밝고 선명하게 렌더링)
-    const dirLight2 = new THREE.DirectionalLight(0x93C5FD, 0.7);
-    dirLight2.position.set(-300, 400, -250);
+    // 반대편 보조광
+    const dirLight2 = new THREE.DirectionalLight(0x93C5FD, 0.4);
+    dirLight2.position.set(-300, 350, -220);
     scene.add(dirLight2);
 
-    const hemiLight = new THREE.HemisphereLight(0xE0F2FE, 0x1E293B, 0.75);
-    scene.add(hemiLight);
+    const hemiLight = new THREE.HemisphereLight(0xE0F2FE, 0x334155, 0.55);
     scene.add(hemiLight);
 
     // Groups
@@ -349,9 +349,63 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
     const zSpan = realTerrain ? realTerrain.depthMeters : Math.round(xSpan * 0.72);
     const xStart = totalBridgeLen / 2 - xSpan / 2;
 
-    // 🌟 도로 선형 중심선 좌표 및 탄젠트/경사각 함수 (평면선형 R 및 종단선형 g, FG0에 100% 종속)
+    const skewRad = ((bridgeParams.skew_angle || 0) * Math.PI) / 180;
+
+    // 🌟 SSOT 실측 지반고 함수 (이중선형 보간 + 사용자 수직 스케일 반영)
+    const getActualGroundY = (x: number, z: number = 0): number => {
+      if (realTerrain && realTerrain.elevationGrid.length > 0) {
+        const rows = realTerrain.elevationGrid.length;
+        const cols = realTerrain.elevationGrid[0].length;
+        const normX = Math.max(0, Math.min(1, (x - xStart) / xSpan));
+        const normZ = Math.max(0, Math.min(1, (z + zSpan / 2) / zSpan));
+        const gx = normX * (cols - 1);
+        const gz = normZ * (rows - 1);
+        const x0 = Math.floor(gx);
+        const z0 = Math.floor(gz);
+        const x1 = Math.min(cols - 1, x0 + 1);
+        const z1 = Math.min(rows - 1, z0 + 1);
+        const tx = gx - x0;
+        const tz = gz - z0;
+
+        const e00 = realTerrain.elevationGrid[z0][x0];
+        const e10 = realTerrain.elevationGrid[z0][x1];
+        const e01 = realTerrain.elevationGrid[z1][x0];
+        const e11 = realTerrain.elevationGrid[z1][x1];
+        const rawElev =
+          e00 * (1 - tx) * (1 - tz) +
+          e10 * tx * (1 - tz) +
+          e01 * (1 - tx) * tz +
+          e11 * tx * tz;
+
+        return 15 + (rawElev - realTerrain.centerElevation) * terrainVerticalScale;
+      }
+      const { groundElevation } = calculateOriginalGround(x, totalBridgeLen, terrain, alignment);
+      const zDist = Math.abs(z);
+      const sideSlope = (zDist / (zSpan / 2)) * 3.5;
+      return 15 + (groundElevation - 15 + sideSlope) * terrainVerticalScale;
+    };
+
+    // 수직 스케일 확대 또는 협곡 지형에서 시·종점 양안 지반이 교량 계획고보다 높아지면 교량을 지반 위로 안전하게 부상
+    let bridgeVerticalLift = 0;
+    if (realTerrain && realTerrain.hasRealDem) {
+      let maxCorridorGroundY = -Infinity;
+      for (let s = 0; s <= 10; s++) {
+        const sx = (totalBridgeLen * s) / 10;
+        const sy = getActualGroundY(sx, 0);
+        if (sy > maxCorridorGroundY) maxCorridorGroundY = sy;
+      }
+      const minBridgeFG = Math.min(
+        calculateFormationGround(0, alignment),
+        calculateFormationGround(totalBridgeLen, alignment)
+      );
+      if (maxCorridorGroundY + 5.0 > minBridgeFG) {
+        bridgeVerticalLift = maxCorridorGroundY + 5.0 - minBridgeFG;
+      }
+    }
+
+    // 🌟 도로 선형 중심선 좌표 및 탄젠트/경사각 함수 (평면선형 R 및 종단선형 g, FG0, 수직여유고 종속)
     const getAlignmentPoint = (x: number): { x: number; y: number; z: number; yaw: number; pitch: number } => {
-      const y = calculateFormationGround(x, alignment);
+      const y = calculateFormationGround(x, alignment) + bridgeVerticalLift;
       const pitch = -Math.atan((alignment.longitudinal_slope || 0) / 100);
 
       let z = 0;
@@ -368,30 +422,6 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
       }
 
       return { x, y, z, yaw, pitch };
-    };
-
-    const skewRad = ((bridgeParams.skew_angle || 0) * Math.PI) / 180;
-
-    // 🌟 SSOT 실측 지반고 함수: 지형 메쉬, 교대, 교각, 풋팅, 말뚝 기초가 100% 동일한 고도 체계를 공유
-    const getActualGroundY = (x: number, z: number = 0): number => {
-      if (realTerrain && realTerrain.elevationGrid.length > 0) {
-        const normX = Math.max(0, Math.min(1, (x - xStart) / xSpan));
-        const normZ = Math.max(0, Math.min(1, (z + zSpan / 2) / zSpan));
-        const gridZ = Math.min(
-          realTerrain.elevationGrid.length - 1,
-          Math.floor(normZ * (realTerrain.elevationGrid.length - 1))
-        );
-        const gridX = Math.min(
-          realTerrain.elevationGrid[0].length - 1,
-          Math.floor(normX * (realTerrain.elevationGrid[0].length - 1))
-        );
-        const rawElev = realTerrain.elevationGrid[gridZ][gridX];
-        return rawElev - realTerrain.centerElevation + 15;
-      }
-      const { groundElevation } = calculateOriginalGround(x, totalBridgeLen, terrain, alignment);
-      const zDist = Math.abs(z);
-      const sideSlope = (zDist / (zSpan / 2)) * 3.5;
-      return groundElevation + sideSlope;
     };
 
     // =========================================================================
@@ -698,7 +728,7 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
 
       bGroup.add(pierGroup);
     });
-  }, [bridgeParams, showPiles, showTerrain, showAlignment, wireframe, realTerrain]);
+  }, [bridgeParams, showPiles, showTerrain, showAlignment, wireframe, realTerrain, terrainVerticalScale]);
 
   return (
     <div
@@ -725,10 +755,17 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
             실측 위성 타일·DEM 로드 중...
           </span>
         ) : realTerrain ? (
-          <span className="text-[10px] bg-emerald-950 text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-600/50 font-mono flex items-center gap-1">
-            <Mountain className="w-3 h-3 text-emerald-400" />
-            실측 DEM ({Math.round(realTerrain.minElevation)}~{Math.round(realTerrain.maxElevation)}m) & 항공위성사진 매핑
-          </span>
+          realTerrain.hasRealDem ? (
+            <span className="text-[10px] bg-emerald-950 text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-600/50 font-mono flex items-center gap-1">
+              <Mountain className="w-3 h-3 text-emerald-400" />
+              실측 SRTM DEM ({Math.round(realTerrain.minElevation)}~{Math.round(realTerrain.maxElevation)}m · 고도차 {Math.round(realTerrain.maxElevation - realTerrain.minElevation)}m) · {terrainVerticalScale.toFixed(1)}x
+            </span>
+          ) : (
+            <span className="text-[10px] bg-amber-950 text-amber-300 px-1.5 py-0.5 rounded border border-amber-600/50 font-mono flex items-center gap-1">
+              <Mountain className="w-3 h-3 text-amber-400" />
+              DEM 타일 미수신 (추정 지형 폴백)
+            </span>
+          )
         ) : bridgeParams.terrain && (
           <span className="text-[10px] bg-indigo-900/70 text-indigo-200 px-1.5 py-0.5 rounded border border-indigo-700/50 flex items-center gap-1">
             <Mountain className="w-3 h-3 text-indigo-400" />
@@ -798,6 +835,41 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
           <Eye className="w-3.5 h-3.5" />
           <span>와이어</span>
         </button>
+      </div>
+
+      {/* DEM Terrain Vertical Height Scale Control (Bottom Right) */}
+      <div className="absolute bottom-3 right-3 flex items-center gap-2 bg-slate-900/90 backdrop-blur-md px-2.5 py-1.5 rounded-lg border border-slate-700 text-xs text-white shadow-lg">
+        <div className="flex items-center gap-1 text-[11px] font-bold text-emerald-300 shrink-0" title="실측 DEM 지형 표고차(높이) 과장 배율 조절">
+          <Ruler className="w-3.5 h-3.5 text-emerald-400" />
+          <span>지형 높이 배율</span>
+          <span className="font-mono text-amber-300 w-9 text-right">{terrainVerticalScale.toFixed(1)}x</span>
+        </div>
+        <input
+          type="range"
+          min={0.5}
+          max={5.0}
+          step={0.25}
+          value={terrainVerticalScale}
+          onChange={(e) => setTerrainVerticalScale(parseFloat(e.target.value))}
+          className="w-20 accent-emerald-400 cursor-pointer h-1.5 bg-slate-700 rounded-lg"
+          aria-label="지형 높이 배율"
+        />
+        <div className="flex items-center gap-0.5">
+          {[1, 2, 3, 5].map((presetScale) => (
+            <button
+              key={presetScale}
+              onClick={() => setTerrainVerticalScale(presetScale)}
+              className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold transition-all ${
+                Math.abs(terrainVerticalScale - presetScale) < 0.01
+                  ? 'bg-emerald-600 text-white shadow'
+                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+              }`}
+              title={presetScale === 1 ? '실측 1:1 높이 (과장 없음)' : `지형 기복 ${presetScale}배 강조`}
+            >
+              {presetScale}x
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Camera View Switcher Buttons (Top Right) */}
