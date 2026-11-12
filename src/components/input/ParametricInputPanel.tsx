@@ -272,12 +272,15 @@ export const ParametricInputPanel: React.FC = () => {
                     label="평면 곡선 반경 (R)"
                     unit="m"
                     type="number"
-                    min="0"
+                    min="-5000"
                     max="5000"
                     step="50"
                     value={bridgeParams.alignment?.curve_radius ?? DEFAULT_ALIGNMENT.curve_radius}
-                    onChange={(e) => updateAlignmentParams({ curve_radius: parseFloat(e.target.value) || 0 })}
-                    helperText="0: 직선교, 300~2000m: 곡선교"
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value);
+                      updateAlignmentParams({ curve_radius: Number.isFinite(v) ? v : 0 });
+                    }}
+                    helperText="0: 직선교, ±300~2000m: 좌/우 곡선교"
                   />
                   <SSOTInput
                     label="교량 사각 (Skew Angle)"
