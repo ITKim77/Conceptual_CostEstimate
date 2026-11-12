@@ -11,14 +11,13 @@ import {
 import {
   ArrowLeft,
   Award,
-  BookOpen,
   Camera,
   CheckCircle2,
   FileText,
   Layers,
   Loader2,
-  Printer,
-  Sparkles
+  MapPin,
+  Printer
 } from 'lucide-react';
 
 function formatBillion(won: number): string {
@@ -45,94 +44,94 @@ function explainSuperstructureForStudent(spans: SpanItem[]): {
 
   const mixedPrefix =
     uniqueTypes.length > 1
-      ? `총 ${spans.length}개 구간에 ${uniqueTypes.length}가지 다리 형식을 섞어 배치한 혼합형 다리입니다. 대표 구간인 `
+      ? `총 ${spans.length}개 경간에 ${uniqueTypes.length}가지 교량 형식을 혼합 적용한 구조입니다. 주요 구간인 `
       : '';
 
   switch (cat) {
     case 'ARCH':
       return {
         shortName: uniqueTypes.length > 1 ? `혼합 (${metaName} 포함)` : metaName,
-        easyTitle: '무지개 모양 아치로 상판을 매단 랜드마크 다리',
-        description: `${mixedPrefix}커다란 활(무지개) 모양의 강철 아치 리브가 다리 위쪽에서 튼튼한 줄(행어 케이블)로 차도를 끌어당겨 버텨요. 강이나 계곡 가운데에 기둥을 세우기 어려울 때 아주 긴 거리를 한 번에 건널 수 있는 멋진 다리예요.`
+        easyTitle: '아치 리브와 케이블로 상판을 지지하는 아치 교량',
+        description: `${mixedPrefix}활 모양의 강철 아치 리브가 상부에서 행어 케이블로 교량 상판을 매달아 하중을 지탱하는 구조입니다. 하천이나 깊은 계곡 중앙에 교각을 세우기 어려울 때 긴 경간을 한 번에 횡단하기에 유리합니다.`
       };
     case 'CABLE_STAYED':
       return {
         shortName: uniqueTypes.length > 1 ? `혼합 (${metaName} 포함)` : metaName,
-        easyTitle: '높은 탑에서 비스듬한 케이블로 상판을 매단 다리 (사장교)',
-        description: `${mixedPrefix}다리 중간에 우뚝 솟은 높은 탑(주탑)을 세우고, 탑에서 뻗어 나온 수많은 강철 케이블이 다리 상판을 비스듬히 붙잡아 줍니다. 매우 긴 강이나 깊은 계곡을 건널 때 튼튼하고 경관도 가장 뛰어난 형식이에요.`
+        easyTitle: '주탑에서 사선 케이블로 상판을 지지하는 사장교',
+        description: `${mixedPrefix}교량 중간에 높은 주탑을 세우고, 주탑에서 뻗어 나온 강철 케이블로 교량 상판을 비스듬히 끌어당겨 지탱하는 형식입니다. 매우 긴 하천이나 계곡을 건너는 장경간 구간에 적합하며 경관성이 뛰어납니다.`
       };
     case 'EXTRADOSED':
       return {
         shortName: uniqueTypes.length > 1 ? `혼합 (${metaName} 포함)` : metaName,
-        easyTitle: '사장교와 박스거더의 장점을 합친 저탑 하이브리드 다리',
-        description: `${mixedPrefix}사장교보다 탑의 높이를 낮추고 상판 자체도 두껍고 튼튼한 콘크리트 상자로 만든 형식이에요. 바람에 흔들림이 적고 건설비도 사장교보다 알뜰해서 중·장거리 고속도로 교량에 많이 쓰여요.`
+        easyTitle: '사장교와 박스거더의 장점을 결합한 저탑 하이브리드 교량',
+        description: `${mixedPrefix}사장교보다 주탑 높이를 낮추고 상판 자체도 두꺼운 콘크리트 박스 단면으로 설계한 형식입니다. 바람에 의한 진동이 적고 공사비도 일반 사장교보다 절감되어 중·장경간 고속도로 교량에 널리 적용됩니다.`
       };
     case 'PSC_BOX_FCM':
       return {
         shortName: uniqueTypes.length > 1 ? `혼합 (${metaName} 포함)` : metaName,
-        easyTitle: '기둥 위에서 양쪽으로 균형 잡으며 이어 붙인 콘크리트 상자 다리',
-        description: `${mixedPrefix}하천이나 깊은 계곡 아래에 비계(받침대)를 세우지 않고, 기둥 위에서부터 좌우 균형을 맞추며 콘크리트 상자 조각을 하나씩 이어 붙이는(FCM) 첨단 공법이에요. 기둥 근처가 두껍고 가운데가 날씬한 아치형 곡선을 띱니다.`
+        easyTitle: '교각 위에서 좌우 균형을 맞춰 이어 붙이는 변단면 콘크리트 박스 교량',
+        description: `${mixedPrefix}하천이나 계곡 아래에 동바리(가설 지지대)를 세우지 않고, 교각 상단에서 좌우 균형을 맞추며 콘크리트 박스 세그먼트를 순차적으로 이어 붙이는(FCM) 공법입니다. 교각 부위가 두껍고 경간 중앙이 얇은 곡선 형태를 띱니다.`
       };
     case 'PSC_BOX':
       return {
         shortName: uniqueTypes.length > 1 ? `혼합 (${metaName} 포함)` : metaName,
-        easyTitle: '속이 빈 튼튼한 사다리꼴 콘크리트 상자(박스) 다리',
-        description: `${mixedPrefix}큰 콘크리트 상자 내부를 비워 무게는 줄이면서도 비틀림과 무거운 차량 하중을 잘 버티게 만든 고속도로 다리예요. 다리 밑 모습이 깔끔하고 여러 경간을 연속으로 잇기에 좋아요.`
+        easyTitle: '속이 빈 사다리꼴 콘크리트 상자 단면 교량',
+        description: `${mixedPrefix}큰 콘크리트 상자 내부를 비워 자중은 줄이면서 비틀림과 무거운 차량 하중에 강하게 저항하도록 만든 교량입니다. 교량 하부 외관이 깔끔하고 다경간 연속 구간에 적합합니다.`
       };
     case 'STEEL_BOX':
       return {
         shortName: uniqueTypes.length > 1 ? `혼합 (${metaName} 포함)` : metaName,
-        easyTitle: '강철 상자 대들보로 만든 튼튼한 곡선 대응 다리 (강박스교)',
-        description: `${mixedPrefix}속이 빈 사다리꼴 모양의 강철 상자(Steel Box) 여러 개를 나란히 놓아 다리를 받칩니다. 콘크리트보다 가벼우면서도 비틀림에 강해서, 고속도로가 크게 휘어지는 커브 구간에서도 매우 안전해요.`
+        easyTitle: '강철 상자 대들보를 적용한 곡선 대응 강박스 교량',
+        description: `${mixedPrefix}속이 빈 사다리꼴 강철 상자(Steel Box) 여러 개를 나란히 배치해 교량 상판을 지지하는 형식입니다. 콘크리트 교량보다 가볍고 비틀림 저항력이 커서 곡률 반경이 작은 커브 구간에도 안정적으로 적용됩니다.`
       };
     case 'RATIONALIZED_PLATE':
       return {
         shortName: uniqueTypes.length > 1 ? `혼합 (${metaName} 포함)` : metaName,
-        easyTitle: '2개의 굵은 강철 I형 대들보로 단순화한 실용 강교',
-        description: `${mixedPrefix}예전처럼 작은 강철 빔을 4~5개씩 많이 쓰지 않고, 아주 튼튼한 2개의 대형 강철 대들보(소수주형)와 가로보로 단순하게 지탱해 제작비와 공사 기간을 아끼는 최신 공법이에요.`
+        easyTitle: '2개의 대형 강철 I형 주형으로 단순화한 소수주형 강교',
+        description: `${mixedPrefix}기존처럼 강철 빔을 여러 개 배치하지 않고, 강성이 큰 대형 강철 대들보 2개와 가로보로 단순하게 구성하여 제작 물량과 공사 기간을 줄이는 합리화 강교 형식입니다.`
       };
     case 'STEEL_PLATE':
       return {
         shortName: uniqueTypes.length > 1 ? `혼합 (${metaName} 포함)` : metaName,
-        easyTitle: 'I자 모양 강철 대들보를 여러 개 배치한 다리 (강판형교)',
-        description: `${mixedPrefix}강철 판을 I자 모양으로 용접해 만든 대들보 4~5개를 나란히 세워 다리를 받칩니다. 자재가 가볍고 좁은 산간 계곡이나 곡선 도로 현장에서도 조립하기 편리한 다리예요.`
+        easyTitle: 'I형 강철 대들보를 다수 배치한 강판형 교량',
+        description: `${mixedPrefix}강철 판을 I자 단면으로 용접한 대들보 여러 개를 나란히 설치해 상판을 받치는 교량입니다. 부재가 가벼워 좁은 계곡이나 곡선 도로 현장에서도 조립과 가설이 용이합니다.`
       };
     case 'RC_RAHMEN':
       return {
         shortName: uniqueTypes.length > 1 ? `혼합 (${metaName} 포함)` : metaName,
-        easyTitle: '상판과 기둥이 하나로 단단히 붙은 문틀 모양 다리 (라멘교)',
-        description: `${mixedPrefix}다리 윗판과 양쪽 끝 벽체(교대)가 고무 받침 없이 'ㄷ'자 모양으로 딱 붙어 있는 일체형 다리예요. 지진에 강하고 유지관리비가 적게 들어 작은 하천이나 도로를 건널 때 경제적이에요.`
+        easyTitle: '상판과 교대 벽체가 일체로 연결된 문틀형 라멘 교량',
+        description: `${mixedPrefix}교량 상판과 양쪽 끝 벽체(교대)가 교량받침 없이 ㄷ자 형태로 일체화된 구조입니다. 지진 저항력이 우수하고 유지관리 요소가 적어 소규모 하천이나 도로 횡단에 경제적입니다.`
       };
     case 'RC_BOX':
       return {
         shortName: uniqueTypes.length > 1 ? `혼합 (${metaName} 포함)` : metaName,
-        easyTitle: '사각형 콘크리트 통로 박스형 구조물 (RC BOX)',
-        description: `${mixedPrefix}위·아래·양옆이 모두 콘크리트 벽으로 닫혀 있는 네모난 상자 터널 모양의 구조물이에요. 작은 하천이나 농로·지하차도 통로를 만들 때 매우 튼튼하고 시공이 간편해요.`
+        easyTitle: '사각형 콘크리트 폐합 단면 암거형 구조물 (RC BOX)',
+        description: `${mixedPrefix}상·하부 슬래브와 양쪽 측벽이 모두 콘크리트로 일체 구성된 상자형 통로 구조물입니다. 소규모 하천, 농로 또는 지하차도 통로 구간에서 시공이 간편하고 내구성이 높습니다.`
       };
     case 'PSC_LOW_DEPTH':
       return {
         shortName: uniqueTypes.length > 1 ? `혼합 (${metaName} 포함)` : metaName,
-        easyTitle: '다리 두께를 얇게 줄인 저형고 하이브리드 거더 다리',
-        description: `${mixedPrefix}콘크리트 빔 안에 강철 부재를 함께 넣어 다리 대들보의 두께(형고)를 낮춘 형식이에요. 다리 밑으로 큰 차나 강물이 지나갈 공간(높이)이 부족할 때 아주 유용해요.`
+        easyTitle: '대들보 두께를 낮춘 저형고 복합 거더 교량',
+        description: `${mixedPrefix}콘크리트 거더 내부에 강재 보강을 결합해 교량 대들보의 높이(형고)를 얇게 줄인 형식입니다. 교량 아래로 차량이나 하천이 통과할 여유 높이(형하공간)를 확보해야 할 때 유리합니다.`
       };
     case 'PSC_U_TROUGH':
       return {
         shortName: uniqueTypes.length > 1 ? `혼합 (${metaName} 포함)` : metaName,
-        easyTitle: '위쪽이 트인 U자 모양 콘크리트 거더 다리',
-        description: `${mixedPrefix}대들보 단면이 U자(트러프) 형태로 넓고 안정적이어서 바람이나 비틀림에 잘 견디고 미관도 단정한 개량형 콘크리트 다리예요.`
+        easyTitle: 'U자형 개방 단면 콘크리트 거더 교량',
+        description: `${mixedPrefix}대들보 단면이 넓은 U자 형태로 구성되어 횡방향 안정성과 비틀림 저항이 우수하고 하부 미관도 단정한 개량형 콘크리트 교량입니다.`
       };
     case 'PSC_GIRDER_HAUNCHED':
       return {
         shortName: uniqueTypes.length > 1 ? `혼합 (${metaName} 포함)` : metaName,
-        easyTitle: '양끝 기둥 쪽이 더 두꺼워지는 개량형 변단면 PSC 거더',
-        description: `${mixedPrefix}힘이 많이 몰리는 양쪽 기둥 근처는 대들보를 두껍게, 가운데는 날씬하게 만들어 재료는 아끼면서도 더 긴 거리를 건널 수 있게 개선한 고속도로 대표 거더예요.`
+        easyTitle: '지점부를 두껍게 보강한 변단면 개량형 PSC 거더 교량',
+        description: `${mixedPrefix}하중이 크게 집중되는 양쪽 교각 위 단면은 두껍게, 중앙부는 날씬하게 설계하여 재료를 절감하면서도 경간 길이를 늘릴 수 있는 개량형 거더 교량입니다.`
       };
     case 'PSC_GIRDER_I':
     default:
       return {
         shortName: uniqueTypes.length > 1 ? `혼합 (${metaName} 포함)` : metaName,
-        easyTitle: '공장에서 만든 I형 콘크리트 대들보를 얹는 표준 다리',
-        description: `${mixedPrefix}공장에서 미리 튼튼하게 만든 콘크리트 빔(PSC BEAM)을 기둥 위에 나란히 얹고 위를 콘크리트로 덮어 완성해요. 공사비가 가장 알뜰하고 전국 고속도로에서 가장 널리 검증된 표준 다리예요.`
+        easyTitle: '공장 제작 I형 콘크리트 대들보를 거치하는 표준 교량',
+        description: `${mixedPrefix}공장에서 사전 제작한 콘크리트 빔(PSC BEAM)을 교각 위에 나란히 거치한 뒤 상부 콘크리트 바닥판을 타설해 완성하는 형식입니다. 공사비가 경제적이고 시공성이 검증된 고속도로 표준 교량입니다.`
       };
   }
 }
@@ -142,28 +141,28 @@ function explainAlignmentEasy(params: BridgeParameters): string {
   const parts: string[] = [];
 
   if (!align || !align.curve_radius || align.curve_radius === 0) {
-    parts.push('반듯한 직선 도로');
+    parts.push('직선 선형');
   } else {
     const absR = Math.abs(align.curve_radius);
-    const dir = align.curve_radius > 0 ? '오른쪽' : '왼쪽';
-    const sharpness = absR >= 1000 ? '아주 완만하게' : absR >= 500 ? '부드럽게' : '또렷하게';
-    parts.push(`${dir}으로 ${sharpness} 휘어지는 곡선 도로(반지름 ${absR}m)`);
+    const dir = align.curve_radius > 0 ? '우측' : '좌측';
+    const sharpness = absR >= 1000 ? '완만한' : absR >= 500 ? '표준' : '급한';
+    parts.push(`${dir} ${sharpness} 곡선(반지름 R=${absR}m)`);
   }
 
   const slope = align?.longitudinal_slope ?? 0;
   if (Math.abs(slope) < 0.05) {
-    parts.push('거의 평평한 높이(경사 0%)');
+    parts.push('평탄 종단(경사 0%)');
   } else {
     const dirSlope = slope > 0 ? '오르막' : '내리막';
-    parts.push(`100m 갈 때 높이가 약 ${Math.abs(slope).toFixed(1)}m 변하는 ${dirSlope}(${slope > 0 ? '+' : ''}${slope}%)`);
+    parts.push(`종단경사 ${slope > 0 ? '+' : ''}${slope}% (${dirSlope})`);
   }
 
   const skew = params.skew_angle || 0;
   if (Math.abs(skew) < 0.5) {
-    parts.push('강·도로와 직각(사각 0°) 교차');
+    parts.push('직각 교차(사각 0°)');
   } else {
-    const rotText = skew > 0 ? '시계 반대방향(+)' : '시계방향(-)';
-    parts.push(`지형 방향에 맞춰 ${rotText} ${Math.abs(skew)}° 비스듬히 건너는 사교`);
+    const rotText = skew > 0 ? '반시계방향(+)' : '시계방향(-)';
+    parts.push(`사각 ${Math.abs(skew)}° (${rotText} 사교)`);
   }
 
   return parts.join(' · ');
@@ -187,7 +186,7 @@ const ReportComparisonSvgChart: React.FC<{
     <div className="border border-slate-200 rounded-lg p-3 bg-slate-50/70">
       <div className="flex items-center justify-between mb-2">
         <span className="text-[11px] font-extrabold text-slate-800">
-          대안별 총공사비 한눈에 비교하기 (단위: 억 원)
+          대안별 총공사비 비교 (단위: 억 원)
         </span>
         <div className="flex items-center gap-3 text-[10px] text-slate-600">
           <span className="inline-flex items-center gap-1">
@@ -330,10 +329,10 @@ export const AlternativeAnalysisReport: React.FC = () => {
           <div className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-indigo-600" />
             <h2 className="text-base font-extrabold text-slate-900">
-              대안별 BIM 공사비 분석 보고서 (A4 PDF 출력용)
+              대안별 공사비 비교 분석 보고서 (A4 PDF)
             </h2>
             <span className="text-[11px] font-bold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full border border-indigo-200">
-              총 {totalPages}페이지 (표지·종합 1p + 대안별 {reportItems.length}p)
+              총 {totalPages}페이지 (총괄 1p + 대안별 {reportItems.length}p)
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
@@ -345,7 +344,7 @@ export const AlternativeAnalysisReport: React.FC = () => {
             ) : (
               <span className="inline-flex items-center gap-1.5 text-emerald-700 font-semibold">
                 <CheckCircle2 className="w-3.5 h-3.5" />
-                각 대안별 3D BIM 스틸컷(투시도·측면도) 및 쉬운 해설이 A4 규격에 맞춰 페이지별로 정렬되었습니다.
+                대안별 3D BIM 모델 스틸컷 및 공사비 분석 내용이 A4 용지 규격에 맞춰 정리되었습니다.
                 <span className="text-slate-400 font-normal ml-1">
                   (인쇄 창에서 대상: &apos;PDF로 저장&apos;, 용지: A4, &apos;배경 그래픽&apos; 체크 권장)
                 </span>
@@ -392,42 +391,33 @@ export const AlternativeAnalysisReport: React.FC = () => {
             PAGE 1: 종합 요약 · 현황 쉬운 해설 · 대안별 비교표 & 그래프
            ================================================================ */}
         <section className="report-a4-page">
-          <div className="space-y-3.5">
+          <div className="space-y-4">
             {/* 상단 표지 헤더 */}
-            <div className="bg-slate-900 text-white rounded-xl p-4 flex items-start justify-between border-b-4 border-amber-400">
-              <div>
-                <span className="text-[10px] font-bold tracking-widest text-amber-300 uppercase">
-                  HIGHWAY BRIDGE CONCEPTUAL BIM &amp; COST REPORT
-                </span>
-                <h1 className="text-lg font-extrabold mt-0.5 leading-snug">
-                  {displayProjectTitle} — 대안별 공사비 비교 분석 보고서
-                </h1>
-                <p className="text-[11px] text-slate-300 mt-1">
-                  위성 지형·선형 기반 3D BIM 모델과 국토교통 표준(REV.04) 개략공사비를 누구나 알기 쉽게 정리한 보고서입니다.
-                </p>
-              </div>
+            <div className="bg-slate-900 text-white rounded-xl p-4 flex items-center justify-between border-b-4 border-amber-400">
+              <h1 className="text-lg font-extrabold leading-snug">
+                {displayProjectTitle} — 대안별 공사비 분석 보고서
+              </h1>
               <div className="text-right text-[10px] text-slate-300 shrink-0 ml-4">
                 <div className="font-bold text-white">{reportDate}</div>
                 <div className="mt-0.5">비교 대안: 총 {reportItems.length}개 안</div>
-                <div className="mt-0.5 text-emerald-300 font-semibold">REV.04 적산 기준</div>
               </div>
             </div>
 
-            {/* 1. 계획 현장 및 도로 현황 (중학생 눈높이 설명) */}
-            <div className="border border-slate-200 rounded-lg p-3 bg-white space-y-2">
+            {/* 1. 계획 현장 및 도로 선형 현황 */}
+            <div className="border border-slate-200 rounded-lg p-3 bg-white space-y-2.5">
               <div className="flex items-center justify-between">
                 <h2 className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
-                  <BookOpen className="w-4 h-4 text-indigo-600" />
-                  1. 다리를 놓으려는 곳과 도로 현황 (쉬운 설명)
+                  <MapPin className="w-4 h-4 text-indigo-600" />
+                  1. 교량 계획 위치 및 도로 선형 현황
                 </h2>
                 <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
-                  {primaryParams.locationName || '대한민국 고속도로 계획 노선'}
+                  {primaryParams.locationName || '고속도로 계획 노선'}
                 </span>
               </div>
 
               <div className="grid grid-cols-4 gap-2 text-[11px]">
-                <div className="p-2 rounded bg-slate-50 border border-slate-100">
-                  <span className="text-[10px] text-slate-500 block">다리 길이 / 차선 폭</span>
+                <div className="p-2.5 rounded bg-slate-50 border border-slate-100">
+                  <span className="text-[10px] text-slate-500 block">교량 연장 / 폭원</span>
                   <strong className="text-slate-900">
                     {primaryParams.bridge_length}m × {primaryParams.bridge_width}m
                   </strong>
@@ -435,38 +425,21 @@ export const AlternativeAnalysisReport: React.FC = () => {
                     {getApproxLanesText(primaryParams.bridge_width)}
                   </span>
                 </div>
-                <div className="p-2 rounded bg-slate-50 border border-slate-100">
+                <div className="p-2.5 rounded bg-slate-50 border border-slate-100">
                   <span className="text-[10px] text-slate-500 block">위치 좌표</span>
                   <strong className="text-slate-900 font-mono text-[10px]">
                     {primaryParams.coordinates
                       ? `위도 ${primaryParams.coordinates.lat.toFixed(4)}° / 경도 ${primaryParams.coordinates.lng.toFixed(4)}°`
-                      : '표준 지형 모델'}
+                      : '표준 지형'}
                   </strong>
-                  <span className="text-[10px] text-slate-500 block">실측 지형(DEM) 및 위성 연동</span>
+                  <span className="text-[10px] text-slate-500 block">실측 지형(DEM) 반영</span>
                 </div>
-                <div className="p-2 rounded bg-slate-50 border border-slate-100 col-span-2">
-                  <span className="text-[10px] text-slate-500 block">도로 모양 (평면 · 경사 · 사각)</span>
+                <div className="p-2.5 rounded bg-slate-50 border border-slate-100 col-span-2">
+                  <span className="text-[10px] text-slate-500 block">도로 선형 조건 (평면 · 종단 · 사각)</span>
                   <strong className="text-slate-900 text-[10.5px] leading-tight block mt-0.5">
                     {explainAlignmentEasy(primaryParams)}
                   </strong>
                 </div>
-              </div>
-
-              {/* 중학생용 핵심 토목 용어 4가지 정리 */}
-              <div className="bg-sky-50/70 border border-sky-200 rounded-md px-3 py-2 text-[10px] text-slate-700 leading-relaxed">
-                <strong className="text-sky-900 mr-1.5">💡 보고서 읽기 Tip (쉬운 용어 풀이):</strong>
-                <span className="mr-2">
-                  <b>① 상부공</b> = 차가 달리는 다리 윗판과 대들보
-                </span>
-                <span className="mr-2">
-                  <b>② 하부공</b> = 양쪽 끝 벽(교대)과 중간 기둥(교각)
-                </span>
-                <span className="mr-2">
-                  <b>③ 기초공</b> = 땅속 단단한 바위까지 박는 강철 말뚝
-                </span>
-                <span>
-                  <b>④ 토공</b> = 다리 양끝 뒤쪽의 흙쌓기 고속도로
-                </span>
               </div>
             </div>
 
@@ -475,7 +448,7 @@ export const AlternativeAnalysisReport: React.FC = () => {
               <div className="px-3 py-2 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
                 <h2 className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
                   <Layers className="w-4 h-4 text-indigo-600" />
-                  2. 대안별 공사비 및 구조 형식 한눈에 비교하기
+                  2. 대안별 공사비 및 교량 형식 비교
                 </h2>
                 <span className="text-[10px] text-slate-500">
                   기준: 1안({baseAlt.name}) 대비 증감률
@@ -486,8 +459,8 @@ export const AlternativeAnalysisReport: React.FC = () => {
                 <thead className="bg-slate-50 text-slate-700 border-b border-slate-200">
                   <tr>
                     <th className="py-1.5 px-2.5">대안 이름</th>
-                    <th className="py-1.5 px-2">다리 모양 (상부 형식)</th>
-                    <th className="py-1.5 px-2">길이 / 기둥 수</th>
+                    <th className="py-1.5 px-2">교량 상부구조 형식</th>
+                    <th className="py-1.5 px-2">연장 / 교각 수</th>
                     <th className="py-1.5 px-2 text-right">직접공사비</th>
                     <th className="py-1.5 px-2 text-right">총공사비</th>
                     <th className="py-1.5 px-2 text-right">1㎡당 단가</th>
@@ -560,12 +533,12 @@ export const AlternativeAnalysisReport: React.FC = () => {
             {/* 3. 한눈에 보는 공사비 비교 막대 그래프 */}
             <ReportComparisonSvgChart items={reportItems} minCostId={cheapestAlt.id} />
 
-            {/* 4. 종합 추천 의견 */}
+            {/* 3. 종합 분석 결론 */}
             <div className="rounded-lg border-2 border-emerald-200 bg-emerald-50/60 p-3 flex items-start gap-2.5">
               <Award className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
               <div className="text-[11px] text-slate-800 leading-relaxed">
                 <strong className="text-emerald-900 block mb-0.5">
-                  3. 종합 분석 결론 — 어떤 대안이 가장 유리할까요?
+                  3. 종합 분석 결론
                 </strong>
                 {reportItems.length === 1 ? (
                   <span>
@@ -577,15 +550,15 @@ export const AlternativeAnalysisReport: React.FC = () => {
                     <b>
                       {Math.round(cheapestAlt.costBreakdown.unit_cost_per_m2 / 10000).toLocaleString()}만 원
                     </b>
-                    )입니다. 비교 대안을 추가로 저장하면 경제성과 3D 모양을 나란히 비교할 수 있습니다.
+                    )입니다. 비교 대안을 추가로 저장하면 경제성과 교량 형식을 나란히 비교할 수 있습니다.
                   </span>
                 ) : (
                   <span>
-                    비교한 {reportItems.length}개 대안 가운데 건설 비용이 가장 알뜰한 안은{' '}
-                    <b className="text-emerald-800">[{cheapestAlt.name}]</b>로 총공사비{' '}
+                    비교한 {reportItems.length}개 대안 가운데 건설 비용이 가장 경제적인 안은{' '}
+                    <b className="text-emerald-800">[{cheapestAlt.name}]</b>으로 총공사비{' '}
                     <b>{formatBillion(cheapestAlt.costBreakdown.total_construction_cost)}억 원</b>입니다.{' '}
-                    가장 비용이 큰 <b>[{mostExpensiveAlt.name}]</b>(
-                    {formatBillion(mostExpensiveAlt.costBreakdown.total_construction_cost)}억 원)과 비교하면 약{' '}
+                    최대 공사비 안인 <b>[{mostExpensiveAlt.name}]</b>(
+                    {formatBillion(mostExpensiveAlt.costBreakdown.total_construction_cost)}억 원) 대비 약{' '}
                     <b className="text-emerald-700">
                       {formatBillion(
                         mostExpensiveAlt.costBreakdown.total_construction_cost -
@@ -593,7 +566,7 @@ export const AlternativeAnalysisReport: React.FC = () => {
                       )}
                       억 원
                     </b>
-                    의 예산 차이가 나므로, 경제성을 우선한다면 <b>{cheapestAlt.name}</b>을, 경관이나 장경간 횡단을 중시한다면 특수교 대안을 함께 검토하는 것이 좋습니다.
+                    의 예산 차이가 발생하므로, 경제성 우선 시 <b>{cheapestAlt.name}</b>을, 장경간 횡단이나 경관성 확보가 필요한 경우에는 특수교 대안을 검토하는 것이 타당합니다.
                   </span>
                 )}
               </div>
@@ -602,7 +575,7 @@ export const AlternativeAnalysisReport: React.FC = () => {
 
           {/* 페이지 1 푸터 */}
           <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-[10px] text-slate-400">
-            <span>{displayProjectTitle} · 고속도로 교량 개략공사비 분석 보고서</span>
+            <span>{displayProjectTitle} · 교량 대안별 공사비 분석 보고서</span>
             <span className="font-mono font-bold text-slate-600">
               Page 1 / {totalPages}
             </span>
@@ -610,7 +583,7 @@ export const AlternativeAnalysisReport: React.FC = () => {
         </section>
 
         {/* ================================================================
-            PAGES 2 ~ N: 각 대안별 A4 1페이지 전담 (BIM 스틸컷 2컷 + 쉬운 현황·공사비 해설)
+            PAGES 2 ~ N: 각 대안별 A4 1페이지 전담 (BIM 스틸컷 2컷 + 현황·공사비 분석)
            ================================================================ */}
         {reportItems.map((alt, idx) => {
           const p = alt.bridgeParams;
@@ -643,11 +616,10 @@ export const AlternativeAnalysisReport: React.FC = () => {
             p.piers.reduce((acc, pr) => acc + (pr.foundation === 'PILE' ? pr.pile_count : 0), 0);
 
           const spanLengthSummary = p.spans.map((sp) => `${sp.span_length}m`).join(' + ');
-          const aptCount = Math.max(1, Math.round(cb.total_construction_cost / 1000000000));
 
           return (
             <section key={alt.id} className="report-a4-page">
-              <div className="space-y-3">
+              <div className="space-y-3.5">
                 {/* 대안 헤더 배너 */}
                 <div className="flex items-center justify-between border-b-2 border-slate-900 pb-2.5">
                   <div>
@@ -656,17 +628,17 @@ export const AlternativeAnalysisReport: React.FC = () => {
                         className="w-3 h-3 rounded-full shrink-0"
                         style={{ backgroundColor: alt.color || '#4F46E5' }}
                       />
-                      <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
-                        ALTERNATIVE #{idx + 1} DETAILED ANALYSIS
+                      <span className="text-[10px] font-bold text-indigo-600">
+                        제{idx + 1}안 상세 분석
                       </span>
                       {alt.id === cheapestAlt.id && reportItems.length > 1 && (
                         <span className="text-[9.5px] font-extrabold bg-emerald-600 text-white px-2 py-0.5 rounded-full">
-                          ★ 최저 공사비 추천안
+                          최저 공사비
                         </span>
                       )}
                     </div>
                     <h2 className="text-lg font-extrabold text-slate-900 mt-0.5">
-                      [{alt.name}] 3D BIM 모델 및 상세 공사비 분석
+                      [{alt.name}] 3D BIM 모델 및 공사비 분석
                     </h2>
                   </div>
 
@@ -683,15 +655,15 @@ export const AlternativeAnalysisReport: React.FC = () => {
                   </div>
                 </div>
 
-                {/* ① 3D BIM 모델 스틸컷 2컷 (투시 조감 + 측면 종단) */}
+                {/* ① 3D BIM 모델 스틸컷 2컷 */}
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <h3 className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
                       <Camera className="w-3.5 h-3.5 text-indigo-600" />
-                      1) 3D BIM 모델 스틸컷 (실제 지형·고속도로 토공 포함)
+                      1) 3D BIM 모델 스틸컷
                     </h3>
                     <span className="text-[10px] text-slate-500">
-                      {structInfo.shortName} · 교량 {p.bridge_length}m + 양끝 접속 토공
+                      {structInfo.shortName} · 교량 {p.bridge_length}m + 접속 토공
                     </span>
                   </div>
 
@@ -712,7 +684,7 @@ export const AlternativeAnalysisReport: React.FC = () => {
                       </div>
                       <div className="bg-slate-800 text-slate-200 text-[10px] font-semibold px-2.5 py-1 flex items-center justify-between">
                         <span>[그림 1] 3D 전체 조감도</span>
-                        <span className="text-sky-300">상·하부 및 교대 토공</span>
+                        <span className="text-sky-300">상·하부 및 접속 토공</span>
                       </div>
                     </div>
 
@@ -738,30 +710,29 @@ export const AlternativeAnalysisReport: React.FC = () => {
                   </div>
                 </div>
 
-                {/* ② 이 다리의 특징 및 현황 (중학생 눈높이 설명) */}
+                {/* ② 교량 구조 형식 및 주요 제원 */}
                 <div className="border border-slate-200 rounded-lg p-3 bg-slate-50/70 space-y-2">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                      2) 이 다리는 어떻게 생겼고 어떻게 만드나요? — {structInfo.easyTitle}
+                    <h3 className="text-xs font-extrabold text-slate-900">
+                      2) 교량 구조 형식 및 주요 제원 — {structInfo.easyTitle}
                     </h3>
                   </div>
-                  <p className="text-[10.5px] text-slate-700 leading-relaxed bg-white p-2 rounded border border-slate-200">
+                  <p className="text-[10.5px] text-slate-700 leading-relaxed bg-white p-2.5 rounded border border-slate-200">
                     {structInfo.description}
                   </p>
 
                   <div className="grid grid-cols-4 gap-2 text-[10px]">
                     <div className="bg-white p-2 rounded border border-slate-200">
-                      <span className="text-slate-500 block">전체 길이와 폭</span>
+                      <span className="text-slate-500 block">교량 연장 및 폭원</span>
                       <strong className="text-slate-900 text-[11px]">
                         {p.bridge_length}m × {p.bridge_width}m
                       </strong>
                       <span className="text-indigo-600 block mt-0.5">
-                        바닥 면적 {cb.total_deck_area_m2.toLocaleString()}㎡
+                        교면 면적 {cb.total_deck_area_m2.toLocaleString()}㎡
                       </span>
                     </div>
                     <div className="bg-white p-2 rounded border border-slate-200">
-                      <span className="text-slate-500 block">다리의 구간(경간)</span>
+                      <span className="text-slate-500 block">경간 구성</span>
                       <strong className="text-slate-900 text-[11px]">
                         총 {p.spans.length}개 경간
                       </strong>
@@ -770,33 +741,33 @@ export const AlternativeAnalysisReport: React.FC = () => {
                       </span>
                     </div>
                     <div className="bg-white p-2 rounded border border-slate-200">
-                      <span className="text-slate-500 block">중간 기둥(교각) · 끝벽(교대)</span>
+                      <span className="text-slate-500 block">하부구조 (교각 · 교대)</span>
                       <strong className="text-slate-900 text-[11px]">
                         교각 {p.piers.length}기 · 교대 2개소
                       </strong>
                       <span className="text-slate-600 block mt-0.5">
-                        최고 기둥 높이 약 {maxPierHeight.toFixed(1)}m
+                        최고 교각 높이 약 {maxPierHeight.toFixed(1)}m
                       </span>
                     </div>
                     <div className="bg-white p-2 rounded border border-slate-200">
-                      <span className="text-slate-500 block">땅속 기초(강관 말뚝)</span>
+                      <span className="text-slate-500 block">기초 형식</span>
                       <strong className="text-slate-900 text-[11px]">
-                        {totalPilesCount > 0 ? `총 ${totalPilesCount}본` : '직접 기초'}
+                        {totalPilesCount > 0 ? `강관 말뚝 ${totalPilesCount}본` : '직접 기초'}
                       </strong>
                       <span className="text-slate-600 block mt-0.5">
                         {cb.total_pile_length > 0
-                          ? `합계 ${cb.total_pile_length.toLocaleString()}m (${p.pile_method})`
-                          : '단단한 암반 직접 안착'}
+                          ? `총 연장 ${cb.total_pile_length.toLocaleString()}m (${p.pile_method})`
+                          : '암반 직접 지지'}
                       </span>
                     </div>
                   </div>
                 </div>
 
-                {/* ③ 공종별 공사비 분석 (원가 구성 막대 + 쉬운 상세표) */}
+                {/* ③ 공종별 공사비 구성 분석 */}
                 <div className="border border-slate-200 rounded-lg p-3 bg-white space-y-2">
                   <div className="flex items-center justify-between">
                     <h3 className="text-xs font-extrabold text-slate-900">
-                      3) 공사비는 어디에 얼마나 들어갈까요? (원가 구성 분석)
+                      3) 공종별 공사비 구성 분석
                     </h3>
                     <span className="text-[10px] text-slate-500">
                       직접비 {directB}억 + 기타·간접비 {formatBillion(indirectAndMisc)}억 ={' '}
@@ -839,62 +810,64 @@ export const AlternativeAnalysisReport: React.FC = () => {
                   <table className="w-full text-[10px] text-left border-t border-slate-200">
                     <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
                       <tr>
-                        <th className="py-1 px-2">공사 항목</th>
-                        <th className="py-1 px-2">무엇을 만드는 비용인가요?</th>
-                        <th className="py-1 px-2 text-right">금액</th>
-                        <th className="py-1 px-2 text-right">비율</th>
+                        <th className="py-1.5 px-2">공종 구분</th>
+                        <th className="py-1.5 px-2">주요 시공 내용</th>
+                        <th className="py-1.5 px-2 text-right">공사비</th>
+                        <th className="py-1.5 px-2 text-right">구성비</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       <tr>
-                        <td className="py-1 px-2 font-bold text-blue-700">① 상부공</td>
-                        <td className="py-1 px-2 text-slate-600">
-                          차가 달리는 콘크리트 상판·아스팔트·거더/아치/케이블 ({p.spans.length}경간)
+                        <td className="py-1.5 px-2 font-bold text-blue-700">① 상부공</td>
+                        <td className="py-1.5 px-2 text-slate-600">
+                          교량 바닥판·교면포장 및 거더·아치·케이블 등 상부 본체 ({p.spans.length}경간)
                         </td>
-                        <td className="py-1 px-2 text-right font-mono font-bold text-slate-900">
+                        <td className="py-1.5 px-2 text-right font-mono font-bold text-slate-900">
                           {formatBillion(cb.superstructure_cost)}억 원
                         </td>
-                        <td className="py-1 px-2 text-right font-mono text-slate-600">{pctSuper}%</td>
+                        <td className="py-1.5 px-2 text-right font-mono text-slate-600">{pctSuper}%</td>
                       </tr>
                       <tr>
-                        <td className="py-1 px-2 font-bold text-emerald-700">② 하부공</td>
-                        <td className="py-1 px-2 text-slate-600">
-                          양끝 흙막이 벽 교대 2개소 + 중간 기둥 교각 {p.piers.length}기
+                        <td className="py-1.5 px-2 font-bold text-emerald-700">② 하부공</td>
+                        <td className="py-1.5 px-2 text-slate-600">
+                          양단 교대 2개소 및 중간 교각 {p.piers.length}기
                         </td>
-                        <td className="py-1 px-2 text-right font-mono font-bold text-slate-900">
+                        <td className="py-1.5 px-2 text-right font-mono font-bold text-slate-900">
                           {formatBillion(cb.substructure_total)}억 원
                         </td>
-                        <td className="py-1 px-2 text-right font-mono text-slate-600">{pctSub}%</td>
+                        <td className="py-1.5 px-2 text-right font-mono text-slate-600">{pctSub}%</td>
                       </tr>
                       <tr>
-                        <td className="py-1 px-2 font-bold text-amber-700">③ 기초공</td>
-                        <td className="py-1 px-2 text-slate-600">
-                          지름 50.8cm 강관 말뚝 땅속 깊이 박기 (총 길이 {cb.total_pile_length.toLocaleString()}m)
+                        <td className="py-1.5 px-2 font-bold text-amber-700">③ 기초공</td>
+                        <td className="py-1.5 px-2 text-slate-600">
+                          {cb.total_pile_length > 0
+                            ? `강관 말뚝 기초 시공 (D508, 총 연장 ${cb.total_pile_length.toLocaleString()}m)`
+                            : '직접 기초 (단단한 암반 지지)'}
                         </td>
-                        <td className="py-1 px-2 text-right font-mono font-bold text-slate-900">
+                        <td className="py-1.5 px-2 text-right font-mono font-bold text-slate-900">
                           {formatBillion(cb.foundation_cost)}억 원
                         </td>
-                        <td className="py-1 px-2 text-right font-mono text-slate-600">{pctFound}%</td>
+                        <td className="py-1.5 px-2 text-right font-mono text-slate-600">{pctFound}%</td>
                       </tr>
                       <tr>
-                        <td className="py-1 px-2 font-bold text-violet-700">④ 부대·가시설·토공</td>
-                        <td className="py-1 px-2 text-slate-600">
-                          공사 중 물막이 가시설, 난간·가로등, 교대 뒤 접속 토공 공사
+                        <td className="py-1.5 px-2 font-bold text-violet-700">④ 부대·가시설·토공</td>
+                        <td className="py-1.5 px-2 text-slate-600">
+                          방호울타리·신축이음 등 부대공, 물막이 가시설 및 교대 접속 토공
                         </td>
-                        <td className="py-1 px-2 text-right font-mono font-bold text-slate-900">
+                        <td className="py-1.5 px-2 text-right font-mono font-bold text-slate-900">
                           {formatBillion(cb.ancillary_cost)}억 원
                         </td>
-                        <td className="py-1 px-2 text-right font-mono text-slate-600">{pctAnc}%</td>
+                        <td className="py-1.5 px-2 text-right font-mono text-slate-600">{pctAnc}%</td>
                       </tr>
                       <tr>
-                        <td className="py-1 px-2 font-bold text-slate-600">⑤ 기타·간접제잡비</td>
-                        <td className="py-1 px-2 text-slate-600">
-                          기타공사(10%) + 현장 안전·품질관리·보험·제잡비({(p.markup_rate * 100).toFixed(1)}%)
+                        <td className="py-1.5 px-2 font-bold text-slate-600">⑤ 기타·간접제잡비</td>
+                        <td className="py-1.5 px-2 text-slate-600">
+                          기타공사(10%) 및 간접공사비·제잡비({(p.markup_rate * 100).toFixed(1)}%)
                         </td>
-                        <td className="py-1 px-2 text-right font-mono font-bold text-slate-900">
+                        <td className="py-1.5 px-2 text-right font-mono font-bold text-slate-900">
                           {formatBillion(indirectAndMisc)}억 원
                         </td>
-                        <td className="py-1 px-2 text-right font-mono text-slate-600">{pctInd}%</td>
+                        <td className="py-1.5 px-2 text-right font-mono text-slate-600">{pctInd}%</td>
                       </tr>
                       <tr className="bg-indigo-50/70 font-extrabold text-indigo-950">
                         <td className="py-1.5 px-2" colSpan={2}>
@@ -907,13 +880,6 @@ export const AlternativeAnalysisReport: React.FC = () => {
                       </tr>
                     </tbody>
                   </table>
-
-                  {/* 일상 비유 한 줄 설명 */}
-                  <div className="bg-amber-50/80 border border-amber-200 rounded px-2.5 py-1.5 text-[10px] text-amber-950">
-                    <b>📐 생활 비유로 쉽게 이해하기:</b> 이 다리의 1㎡(큰 책상 1개 크기)를 짓는 데 약{' '}
-                    <b>{unitMan.toLocaleString()}만 원</b>이 들어가며, 전체 공사비 <b>{totalB}억 원</b>은 10억 원짜리 아파트 약{' '}
-                    <b>{aptCount}채</b>를 짓는 규모와 비슷합니다.
-                  </div>
                 </div>
               </div>
 
