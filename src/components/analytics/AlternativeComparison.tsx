@@ -11,7 +11,7 @@ import {
   Legend,
   ResponsiveContainer
 } from 'recharts';
-import { TrendingUp, DollarSign, Layers, Edit2, ArrowRight, Award, CheckCircle2, BookmarkPlus } from 'lucide-react';
+import { TrendingUp, DollarSign, Layers, Edit2, ArrowRight, Award, CheckCircle2, BookmarkPlus, FileText } from 'lucide-react';
 
 export const AlternativeComparison: React.FC = () => {
   const {
@@ -88,13 +88,23 @@ export const AlternativeComparison: React.FC = () => {
             등록된 {alternatives.length}개 대안 간의 총공사비, ㎡당 단가, 공종별 원가 구조를 다차원 비교 분석합니다.
           </p>
         </div>
-        <button
-          onClick={() => setViewMode('3D')}
-          className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-2 rounded-lg text-xs font-bold shadow-sm transition-all"
-        >
-          <span>3D BIM 제원 입력 패널로 이동</span>
-          <ArrowRight className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setViewMode('REPORT')}
+            className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-3.5 py-2 rounded-lg text-xs font-extrabold shadow-sm transition-all"
+            title="대안별 BIM 3D 스틸컷과 쉬운 해설이 포함된 A4 PDF 보고서를 생성합니다."
+          >
+            <FileText className="w-4 h-4" />
+            <span>대안별 분석 보고서 생성 (A4 PDF)</span>
+          </button>
+          <button
+            onClick={() => setViewMode('3D')}
+            className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-2 rounded-lg text-xs font-bold shadow-sm transition-all"
+          >
+            <span>3D BIM 제원 입력 패널로 이동</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* 벤치마크 추가 성공 알림 */}

@@ -28,12 +28,12 @@ interface BridgeStoreState {
   activeAlternativeId: string | null;
   alternatives: AlternativeScenario[];
   customBenchmarks: BenchmarkItem[];
-  
+
   // 2. [Blue] 연산 및 인용 파생 상태 (Read-Only)
   costBreakdown: CostBreakdown;
 
   // 3. UI 조작 상태
-  selectedViewMode: '3D' | 'TABLE' | 'ANALYTICS' | 'BENCHMARK';
+  selectedViewMode: '3D' | 'TABLE' | 'ANALYTICS' | 'BENCHMARK' | 'REPORT';
   cameraPreset: 'iso' | 'elevation' | 'cross' | 'plan';
   activeTab: 'basic' | 'spans' | 'substructure' | 'piles' | 'terrain';
 
@@ -76,7 +76,7 @@ interface BridgeStoreState {
   resetToInitialState: () => void;
 
   // UI 상태 액션
-  setViewMode: (mode: '3D' | 'TABLE' | 'ANALYTICS' | 'BENCHMARK') => void;
+  setViewMode: (mode: '3D' | 'TABLE' | 'ANALYTICS' | 'BENCHMARK' | 'REPORT') => void;
   setCameraPreset: (preset: 'iso' | 'elevation' | 'cross' | 'plan') => void;
   setActiveTab: (tab: 'basic' | 'spans' | 'substructure' | 'piles' | 'terrain') => void;
 }
@@ -142,11 +142,11 @@ export const useBridgeStore = create<BridgeStoreState>((set, get) => ({
       const updatedAlts = state.alternatives.map((alt) =>
         alt.id === state.activeAlternativeId
           ? {
-              ...alt,
-              name: newParams.name || alt.name,
-              bridgeParams: newParams,
-              costBreakdown: newBreakdown
-            }
+            ...alt,
+            name: newParams.name || alt.name,
+            bridgeParams: newParams,
+            costBreakdown: newBreakdown
+          }
           : alt
       );
 
@@ -346,10 +346,10 @@ export const useBridgeStore = create<BridgeStoreState>((set, get) => ({
       const updatedAlts = state.alternatives.map((alt) =>
         alt.id === state.activeAlternativeId
           ? {
-              ...alt,
-              bridgeParams: newParams,
-              costBreakdown: newBreakdown
-            }
+            ...alt,
+            bridgeParams: newParams,
+            costBreakdown: newBreakdown
+          }
           : alt
       );
       return {
@@ -643,7 +643,7 @@ export const useBridgeStore = create<BridgeStoreState>((set, get) => ({
     if (!bm) return;
     const paramsCopy = JSON.parse(JSON.stringify(bm.bridgeParams));
     const breakdown = calculateBridgeCost(paramsCopy);
-    
+
     set((state) => {
       // 대안 목록에 이미 없으면 추가
       const exists = state.alternatives.some((a) => a.id === bm.id);

@@ -4,6 +4,7 @@ import { useBridgeStore } from './store/useBridgeStore';
 import { Bridge3DViewer } from './components/viewer3d/Bridge3DViewer';
 import { ParametricInputPanel } from './components/input/ParametricInputPanel';
 import { CostReportTable } from './components/report/CostReportTable';
+import { AlternativeAnalysisReport } from './components/report/AlternativeAnalysisReport';
 import { AlternativeComparison } from './components/analytics/AlternativeComparison';
 import { BenchmarkSelector } from './components/benchmarks/BenchmarkSelector';
 import { AlternativeStatusBar } from './components/analytics/AlternativeStatusBar';
@@ -11,6 +12,7 @@ import { SSOTDerivedValue } from './components/common/SSOTFields';
 import {
   Box,
   FileSpreadsheet,
+  FileText,
   TrendingUp,
   Award,
   Layers,
@@ -112,6 +114,14 @@ export const App: React.FC = () => {
             >
               <TrendingUp className="w-4 h-4" />
               <span>대안 비교 ({alternatives.length})</span>
+            </button>
+            <button
+              onClick={() => setViewMode('REPORT')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${selectedViewMode === 'REPORT' ? 'bg-indigo-600 text-white shadow-sm' : 'text-indigo-700 bg-indigo-50 hover:bg-indigo-100'}`}
+              title="대안별 BIM 스틸컷·쉬운 해설 포함 A4 PDF 보고서 생성"
+            >
+              <FileText className="w-4 h-4" />
+              <span>대안 보고서 (PDF)</span>
             </button>
             <button
               onClick={() => setViewMode('TABLE')}
@@ -274,6 +284,7 @@ export const App: React.FC = () => {
         )}
 
         {selectedViewMode === 'ANALYTICS' && <AlternativeComparison />}
+        {selectedViewMode === 'REPORT' && <AlternativeAnalysisReport />}
         {selectedViewMode === 'TABLE' && <CostReportTable />}
         {selectedViewMode === 'BENCHMARK' && <BenchmarkSelector />}
       </main>

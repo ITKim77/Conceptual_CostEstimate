@@ -13,29 +13,13 @@ import {
   Ruler
 } from 'lucide-react';
 import {
-  calculateOriginalGround,
-  DEFAULT_TERRAIN,
-  DEFAULT_ALIGNMENT
-} from '../../domain/engine/terrain_alignment_calculator';
-import { createAlignmentEvaluator } from '../../domain/engine/alignment_3d';
-import {
-  BridgeMaterialSet,
-  buildApproachHighwayEarthwork,
-  buildHighLodAbutment,
-  buildHighLodPier,
-  buildHighLodSuperstructure,
-  classifySuperstructure,
-  createAsphaltMarkingTexture,
-  getGirderStructuralDepth
-} from './bridge_geometry_builders';
+  populateBridgeScene,
+  resolveBridgeLocationLatLng
+} from './bridge_scene_builder';
 import { SUPERSTRUCTURE_CATALOG } from '../../domain/constants/rev04_database';
 import { SuperstructureType } from '../../domain/models/bridge';
-import {
-  generateKoreaAerialOrthophotoCanvas
-} from '../../domain/constants/korea_terrain_presets';
 import { KoreaGISAlignmentPlanner } from '../gis/KoreaGISAlignmentPlanner';
 import { loadRealWorldTerrain, RealWorldTerrainData } from '../../domain/gis/terrain_dem_loader';
-import { KOREA_POI_DATABASE } from '../../domain/gis/korea_geocoding';
 
 export interface Bridge3DViewerProps {
   isExpanded?: boolean;
@@ -69,26 +53,8 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
     let isCancelled = false;
     setIsLoadingTerrain(true);
 
-    // 1. 노선 계획기에서 지정한 실제 좌표 우선 반영
-    let targetLat = 36.3852;
-    let targetLng = 127.4241;
-
-    if (bridgeParams.coordinates?.lat && bridgeParams.coordinates?.lng) {
-      targetLat = bridgeParams.coordinates.lat;
-      targetLng = bridgeParams.coordinates.lng;
-    } else {
-      const foundPOI = KOREA_POI_DATABASE.find((p) =>
-        bridgeParams.name?.includes(p.name.split(' ')[0]) ||
-        bridgeParams.locationName?.includes(p.name.split(' ')[0])
-      );
-      if (foundPOI) {
-        targetLat = foundPOI.lat;
-        targetLng = foundPOI.lng;
-      }
-    }
-
+    const { lat: targetLat, lng: targetLng, azimuthDeg } = resolveBridgeLocationLatLng(bridgeParams);
     const bridgeLen = bridgeParams.bridge_length || 240;
-    const azimuthDeg = bridgeParams.alignmentEndpoints?.azimuthDeg ?? 90;
 
     loadRealWorldTerrain(targetLat, targetLng, bridgeLen, azimuthDeg, 100, 60)
       .then((data) => {
@@ -328,276 +294,21 @@ export const Bridge3DViewer: React.FC<Bridge3DViewerProps> = ({ isExpanded = fal
     };
   }, [isExpanded]);
 
-  // 3. 🌟 지형(Terrain Mesh) 및 교량 구조물 동적 3D 파라메트릭 빌드
+  // 3. 🌟 지형(Terrain Mesh) 및 교량 구조물 동적 3D 파라메트릭 빌드 (공통 빌더 사용)
   useEffect(() => {
     if (!bridgeGroupRef.current || !terrainGroupRef.current) return;
-    const bGroup = bridgeGroupRef.current;
-    const tGroup = terrainGroupRef.current;
-
-    // Clear previous objects
-    while (bGroup.children.length > 0) {
-      const obj = bGroup.children[0];
-      bGroup.remove(obj);
-    }
-    while (tGroup.children.length > 0) {
-      const obj = tGroup.children[0];
-      tGroup.remove(obj);
-    }
-
-    const {
-      bridge_length,
-      bridge_width,
-      spans,
-      piers,
-      abutments,
-      terrain = DEFAULT_TERRAIN,
-      alignment = DEFAULT_ALIGNMENT
-    } = bridgeParams;
-
-    const spansTotalLen = spans.reduce((sum, s) => sum + s.span_length, 0);
-    const totalBridgeLen = spansTotalLen > 0 ? spansTotalLen : (bridge_length || 200);
-
-    // 🌟 지형 메쉬 크기와 정사영상 캔버스의 실측 미터 크기를 1:1 완전 일치 (교량 중심 = 위성 중심)
-    const xSpan = realTerrain ? realTerrain.widthMeters : Math.max(700, totalBridgeLen * 2.4);
-    const zSpan = realTerrain ? realTerrain.depthMeters : Math.round(xSpan * 0.72);
-    const xStart = totalBridgeLen / 2 - xSpan / 2;
-
-    const clampedSkewDeg = Math.max(-60, Math.min(60, bridgeParams.skew_angle || 0));
-    const skewRad = (clampedSkewDeg * Math.PI) / 180;
-
-    // 🌟 SSOT 실측 지반고 함수 (이중선형 보간 + 사용자 수직 스케일 반영)
-    const getActualGroundY = (x: number, z: number = 0): number => {
-      if (realTerrain && realTerrain.elevationGrid.length > 0) {
-        const rows = realTerrain.elevationGrid.length;
-        const cols = realTerrain.elevationGrid[0].length;
-        const normX = Math.max(0, Math.min(1, (x - xStart) / xSpan));
-        const normZ = Math.max(0, Math.min(1, (z + zSpan / 2) / zSpan));
-        const gx = normX * (cols - 1);
-        const gz = normZ * (rows - 1);
-        const x0 = Math.floor(gx);
-        const z0 = Math.floor(gz);
-        const x1 = Math.min(cols - 1, x0 + 1);
-        const z1 = Math.min(rows - 1, z0 + 1);
-        const tx = gx - x0;
-        const tz = gz - z0;
-
-        const e00 = realTerrain.elevationGrid[z0][x0];
-        const e10 = realTerrain.elevationGrid[z0][x1];
-        const e01 = realTerrain.elevationGrid[z1][x0];
-        const e11 = realTerrain.elevationGrid[z1][x1];
-        const rawElev =
-          e00 * (1 - tx) * (1 - tz) +
-          e10 * tx * (1 - tz) +
-          e01 * (1 - tx) * tz +
-          e11 * tx * tz;
-
-        return 15 + (rawElev - realTerrain.centerElevation) * terrainVerticalScale;
-      }
-      const { groundElevation } = calculateOriginalGround(x, totalBridgeLen, terrain, alignment);
-      const zDist = Math.abs(z);
-      const sideSlope = (zDist / (zSpan / 2)) * 3.5;
-      return 15 + (groundElevation - 15 + sideSlope) * terrainVerticalScale;
-    };
-
-    // 🌟 실제 곡선 평면선형을 따라 지반고를 조회해 수직 여유고 확보
-    const preEvaluator = createAlignmentEvaluator(totalBridgeLen, alignment, 0);
-    let bridgeVerticalLift = 0;
-    if (realTerrain && realTerrain.hasRealDem) {
-      let maxCorridorGroundY = -Infinity;
-      let minBridgeFG = Infinity;
-      for (let s = 0; s <= 12; s++) {
-        const st = (totalBridgeLen * s) / 12;
-        const sample = preEvaluator(st);
-        const sy = getActualGroundY(sample.position.x, sample.position.z);
-        if (sy > maxCorridorGroundY) maxCorridorGroundY = sy;
-        if (sample.position.y < minBridgeFG) minBridgeFG = sample.position.y;
-      }
-      if (maxCorridorGroundY + 5.0 > minBridgeFG) {
-        bridgeVerticalLift = maxCorridorGroundY + 5.0 - minBridgeFG;
-      }
-    }
-
-    // 🌟 공학적 3D 도로 선형 평가기 (곡선 호길이 s 기반 T, R, U 직교 프레임 & 편경사 포함)
-    const evaluator = createAlignmentEvaluator(totalBridgeLen, alignment, bridgeVerticalLift);
-
-    // =========================================================================
-    // 1. 지형 메쉬 (Terrain Mesh) 생성 (Step 1.2)
-    // =========================================================================
-    if (showTerrain) {
-      const xSegments = 100;
-      const zSegments = 60;
-
-      const terrainGeo = new THREE.PlaneGeometry(xSpan, zSpan, xSegments, zSegments);
-      terrainGeo.rotateX(-Math.PI / 2); // XZ 평면으로 눕힘
-      terrainGeo.translate(xStart + xSpan / 2, 0, 0);
-
-      const posAttr = terrainGeo.attributes.position;
-
-      for (let i = 0; i < posAttr.count; i++) {
-        const vx = posAttr.getX(i);
-        const vz = posAttr.getZ(i);
-        const vy = getActualGroundY(vx, vz);
-        posAttr.setY(i, vy);
-      }
-
-      terrainGeo.computeVertexNormals();
-
-      // 🌟 실제 고해상도 항공위성 정사영상 텍스처 적용 (ESRI World Imagery 실사 타일)
-      let terrainTexture: THREE.Texture;
-      if (realTerrain && realTerrain.satelliteCanvas) {
-        terrainTexture = new THREE.CanvasTexture(realTerrain.satelliteCanvas);
-      } else {
-        const orthoCanvas = generateKoreaAerialOrthophotoCanvas(terrain.type, 1024, 512);
-        terrainTexture = new THREE.CanvasTexture(orthoCanvas);
-      }
-      terrainTexture.wrapS = THREE.ClampToEdgeWrapping;
-      terrainTexture.wrapT = THREE.ClampToEdgeWrapping;
-      terrainTexture.anisotropy = 8;
-
-      // 지형 재질 (실제 위성사진 매핑)
-      const terrainMat = new THREE.MeshStandardMaterial({
-        map: terrainTexture,
-        roughness: 0.85,
-        metalness: 0.05,
-        wireframe
-      });
-      const terrainMesh = new THREE.Mesh(terrainGeo, terrainMat);
-      terrainMesh.receiveShadow = true;
-      tGroup.add(terrainMesh);
-      // 🌟 가짜 파란 수면 레이어(waterMesh) 완전 제거: 실제 위성 정사영상 위의 강물을 그대로 선명하게 노출!
-    } else {
-      // 심플 모드 바닥 그리드
-      const grid = new THREE.GridHelper(600, 60, 0x475569, 0x1E293B);
-      grid.position.y = -0.1;
-      tGroup.add(grid);
-    }
-
-    // 도로 선형 가이드라인 (Road Alignment 3D Centerline - 3D 호길이/곡선/편경사 종속)
-    if (showAlignment) {
-      const alignPts: THREE.Vector3[] = [];
-      const steps = 96;
-      for (let s = 0; s <= steps; s++) {
-        const st = (s / steps) * totalBridgeLen;
-        const sample = evaluator(st);
-        alignPts.push(sample.position.clone().addScaledVector(sample.up, 0.35));
-      }
-      const alignGeo = new THREE.BufferGeometry().setFromPoints(alignPts);
-      const alignMat = new THREE.LineDashedMaterial({
-        color: 0xFBBF24,
-        linewidth: 3,
-        dashSize: 4,
-        gapSize: 2
-      });
-      const alignLine = new THREE.Line(alignGeo, alignMat);
-      alignLine.computeLineDistances();
-      bGroup.add(alignLine);
-    }
-
-    // =========================================================================
-    // 2. 고(高)LOD 선형 종속 상부 구조 (Swept Continuous Superstructure)
-    // =========================================================================
-    const asphaltTexture = createAsphaltMarkingTexture(bridge_width);
-    const mats: BridgeMaterialSet = {
-      concrete: new THREE.MeshStandardMaterial({ color: 0xE2E8F0, roughness: 0.62, metalness: 0.08, wireframe }),
-      concreteDark: new THREE.MeshStandardMaterial({ color: 0x94A3B8, roughness: 0.78, metalness: 0.1, wireframe }),
-      asphalt: new THREE.MeshStandardMaterial({ map: asphaltTexture, roughness: 0.88, metalness: 0.05, wireframe }),
-      steelBox: new THREE.MeshStandardMaterial({ color: 0x2563EB, roughness: 0.36, metalness: 0.68, wireframe }),
-      steelLight: new THREE.MeshStandardMaterial({ color: 0x64748B, roughness: 0.42, metalness: 0.65, wireframe }),
-      pier: new THREE.MeshStandardMaterial({ color: 0xCBD5E1, roughness: 0.68, metalness: 0.06, wireframe }),
-      pile: new THREE.MeshStandardMaterial({ color: 0x94A3B8, roughness: 0.4, metalness: 0.6, wireframe }),
-      cable: new THREE.MeshStandardMaterial({ color: 0xF8FAFC, roughness: 0.3, metalness: 0.75, wireframe }),
-      bearing: new THREE.MeshStandardMaterial({ color: 0x1E293B, roughness: 0.5, metalness: 0.5, wireframe }),
-      lampPole: new THREE.MeshStandardMaterial({ color: 0xCBD5E1, roughness: 0.35, metalness: 0.8, wireframe }),
-      lampGlow: new THREE.MeshBasicMaterial({ color: 0xFEF08A, wireframe })
-    };
-
-    buildHighLodSuperstructure(bGroup, spans, bridge_width, totalBridgeLen, evaluator, mats, showPiles, skewRad);
-
-    // =========================================================================
-    // 3. 고(高)LOD 교대 (A1 & A2) 빌드 (실측 곡선 끝단 위치 + 사각 + 날개벽 + 교좌부)
-    // =========================================================================
-    const startType = spans[0]?.type || 'PSC_BEAM';
-    const endType = spans[spans.length - 1]?.type || startType;
-    const startDepth = getGirderStructuralDepth(startType, spans[0]?.span_length || 40);
-    const endDepth = getGirderStructuralDepth(endType, spans[spans.length - 1]?.span_length || 40);
-
-    const startCat = classifySuperstructure(startType);
-    const endCat = classifySuperstructure(endType);
-
-    const ptA1 = evaluator(0);
-    const ogA1 = getActualGroundY(ptA1.position.x, ptA1.position.z);
-    buildHighLodAbutment(
-      bGroup,
-      0,
-      true,
-      bridge_width,
-      skewRad,
-      startDepth,
-      ogA1,
-      abutments[0],
-      evaluator,
-      mats,
+    return populateBridgeScene({
+      bridgeGroup: bridgeGroupRef.current,
+      terrainGroup: terrainGroupRef.current,
+      bridgeParams,
+      realTerrain,
+      terrainVerticalScale,
+      showTerrain,
+      showAlignment,
+      showEarthwork,
       showPiles,
-      startCat === 'RC_RAHMEN' || startCat === 'RC_BOX'
-    );
-
-    const ptA2 = evaluator(totalBridgeLen);
-    const ogA2 = getActualGroundY(ptA2.position.x, ptA2.position.z);
-    buildHighLodAbutment(
-      bGroup,
-      totalBridgeLen,
-      false,
-      bridge_width,
-      skewRad,
-      endDepth,
-      ogA2,
-      abutments[1],
-      evaluator,
-      mats,
-      showPiles,
-      endCat === 'RC_RAHMEN' || endCat === 'RC_BOX'
-    );
-
-    // =========================================================================
-    // 3.5 교대 후방 고속도로 토공 접속부 (성토체·소단·원추사면·절토·포장·가드레일)
-    // =========================================================================
-    if (showEarthwork) {
-      buildApproachHighwayEarthwork({
-        group: bGroup,
-        totalBridgeLen,
-        bridgeWidth: bridge_width,
-        skewRad,
-        evaluator,
-        getGroundY: getActualGroundY,
-        terrainBounds: { xStart, xSpan, zSpan },
-        mats,
-        wireframe
-      });
-    }
-
-    // =========================================================================
-    // 4. 고(高)LOD 교각 (P1, P2...) 빌드 (형식별 차별화 + 곡선 호길이 측점 + 실측 지반고)
-    // =========================================================================
-    let spanCumS = 0;
-    piers.forEach((pier, idx) => {
-      if (idx < spans.length - 1) {
-        spanCumS += spans[idx].span_length;
-      } else {
-        spanCumS = (totalBridgeLen / (piers.length + 1)) * (idx + 1);
-      }
-      const leftSpan = spans[Math.min(idx, spans.length - 1)];
-      const pierGirderDepth = getGirderStructuralDepth(
-        leftSpan?.type || startType,
-        leftSpan?.span_length || 40
-      );
-      const ptPier = evaluator(spanCumS);
-      const ogPier = getActualGroundY(ptPier.position.x, ptPier.position.z);
-      buildHighLodPier(bGroup, spanCumS, pier, bridge_width, skewRad, pierGirderDepth, ogPier, evaluator, mats, showPiles);
+      wireframe
     });
-
-    return () => {
-      asphaltTexture.dispose();
-    };
   }, [bridgeParams, showPiles, showTerrain, showAlignment, showEarthwork, wireframe, realTerrain, terrainVerticalScale]);
 
   return (

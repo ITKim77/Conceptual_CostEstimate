@@ -89,11 +89,49 @@ function sampleBilinearDemElevation(
   return top * (1 - ty) + bottom * ty;
 }
 
+const MAX_TERRAIN_CACHE_ENTRIES = 12;
+const terrainDataCache = new Map<string, Promise<RealWorldTerrainData>>();
+
 /**
  * 대한민국 전역 임의 좌표(lat, lng)와 교량 길이, 방위각(azimuthDeg)에 맞춰
  * 3x3 멀티타일에서 1:1 실측 미터 축척으로 정밀 크롭 & 회전 정렬된 위성 정사영상 및 실측 DEM 고도 데이터를 로드
+ * (동일 좌표/축척 요청은 메모리 캐시로 즉시 재사용)
  */
 export async function loadRealWorldTerrain(
+  lat: number,
+  lng: number,
+  bridgeLengthMeters: number = 240,
+  azimuthDeg: number = 90,
+  gridSegmentsX: number = 100,
+  gridSegmentsZ: number = 60
+): Promise<RealWorldTerrainData> {
+  const cacheKey = `${lat.toFixed(4)}|${lng.toFixed(4)}|${Math.round(bridgeLengthMeters)}|${azimuthDeg.toFixed(1)}|${gridSegmentsX}x${gridSegmentsZ}`;
+  const cached = terrainDataCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const loadPromise = loadRealWorldTerrainUncached(
+    lat,
+    lng,
+    bridgeLengthMeters,
+    azimuthDeg,
+    gridSegmentsX,
+    gridSegmentsZ
+  ).catch((err) => {
+    terrainDataCache.delete(cacheKey);
+    throw err;
+  });
+
+  if (terrainDataCache.size >= MAX_TERRAIN_CACHE_ENTRIES) {
+    const oldestKey = terrainDataCache.keys().next().value;
+    if (oldestKey) terrainDataCache.delete(oldestKey);
+  }
+  terrainDataCache.set(cacheKey, loadPromise);
+  return loadPromise;
+}
+
+async function loadRealWorldTerrainUncached(
   lat: number,
   lng: number,
   bridgeLengthMeters: number = 240,

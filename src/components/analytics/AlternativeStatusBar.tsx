@@ -6,7 +6,8 @@ import {
   Trash2,
   Bookmark,
   Info,
-  CheckCircle2
+  CheckCircle2,
+  FileText
 } from 'lucide-react';
 
 export const AlternativeStatusBar: React.FC = () => {
@@ -15,7 +16,8 @@ export const AlternativeStatusBar: React.FC = () => {
     alternatives,
     loadAlternative,
     deleteAlternative,
-    costBreakdown
+    costBreakdown,
+    setViewMode
   } = useBridgeStore();
 
   const currentTotalBillion = (costBreakdown.total_construction_cost / 100000000).toFixed(2);
@@ -100,6 +102,15 @@ export const AlternativeStatusBar: React.FC = () => {
         <span className="text-[11px] text-slate-500">
           표시 공사비: <strong className="font-mono text-indigo-700">{currentTotalBillion}억원</strong>
         </span>
+        <button
+          type="button"
+          onClick={() => setViewMode('REPORT')}
+          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold shadow-2xs transition-all"
+          title="입력된 대안별 BIM 스틸컷 및 쉬운 공사비 분석 보고서(A4 PDF)를 생성합니다."
+        >
+          <FileText className="w-3.5 h-3.5" />
+          <span>보고서 생성 (PDF)</span>
+        </button>
       </div>
     </div>
   );
